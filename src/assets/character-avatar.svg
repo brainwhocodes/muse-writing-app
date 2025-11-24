@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="avatar_grad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e5e7eb" />
+      <stop offset="1" stop-color="#9ca3af" />
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="50" fill="url(#avatar_grad)" />
+  <path d="M50 25C58.2843 25 65 31.7157 65 40C65 48.2843 58.2843 55 50 55C41.7157 55 35 48.2843 35 40C35 31.7157 41.7157 25 50 25Z" fill="white" fill-opacity="0.9"/>
+  <path d="M85 85C85 65.67 69.33 50 50 50C30.67 50 15 65.67 15 85H85Z" fill="white" fill-opacity="0.9"/>
+</svg>
