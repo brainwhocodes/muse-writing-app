@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { type StoryChapter, useProjectStore } from '../stores/project'
-import { User, GripVertical, ChevronUp, ChevronDown, Edit3, Sparkles } from 'lucide-vue-next'
-
-const props = defineProps<{
-  chapter: StoryChapter
-  index: number
-  totalChapters: number
-}>()
+import { User, ChevronUp, ChevronDown, Edit3, Sparkles } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   (e: 'edit', chapter: StoryChapter): void
+  (e: 'generate', chapterId: string): void
+  (e: 'transition', chapterId: string): void
 }>()
+
+const props = withDefaults(defineProps<{
+  chapter: StoryChapter
+  index: number
+  totalChapters: number
+  isGenerating?: boolean
+  isGeneratingTransition?: boolean
+}>(), {
+  isGenerating: false,
+  isGeneratingTransition: false
+})
 
 const projectStore = useProjectStore()
 
@@ -111,8 +118,26 @@ function moveDown() {
 
           <!-- Quick Action Hint -->
           <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-            <button class="btn btn-ghost btn-xs gap-1 text-base-content/60">
+            <button class="btn btn-ghost btn-xs gap-1 text-base-content/60" @click.stop="$emit('edit', chapter)">
               <Edit3 class="w-3 h-3" /> Edit
+            </button>
+            <button 
+              class="btn btn-ghost btn-xs gap-1 text-secondary"
+              @click.stop="$emit('generate', chapter.id)"
+              :disabled="isGenerating"
+            >
+              <Sparkles class="w-3 h-3" />
+              <span v-if="!isGenerating">Draft</span>
+              <span v-else class="loading loading-xs"></span>
+            </button>
+            <button 
+              class="btn btn-ghost btn-xs gap-1 text-primary"
+              @click.stop="$emit('transition', chapter.id)"
+              :disabled="isGeneratingTransition"
+            >
+              <Edit3 class="w-3 h-3" />
+              <span v-if="!isGeneratingTransition">Transition</span>
+              <span v-else class="loading loading-xs"></span>
             </button>
           </div>
 

@@ -5,9 +5,10 @@ import { Book, List } from 'lucide-vue-next'
 import BookBible from '../components/BookBible.vue'
 import ChapterList from '../components/ChapterList.vue'
 import PipelineWizard from '../components/PipelineWizard.vue'
+import TerminologyPanel from '../components/TerminologyPanel.vue'
 
 const projectStore = useProjectStore()
-const activeTab = ref<'overview' | 'chapters'>('overview')
+const activeTab = ref<'overview' | 'chapters' | 'terminology'>('overview')
 </script>
 
 <template>
@@ -33,6 +34,14 @@ const activeTab = ref<'overview' | 'chapters'>('overview')
             <List class="w-4 h-4 mr-2" />
             Chapters
           </button>
+          <button 
+            class="btn btn-sm join-item" 
+            :class="activeTab === 'terminology' ? 'btn-active btn-neutral' : 'btn-ghost'"
+            @click="activeTab = 'terminology'"
+          >
+            <Book class="w-4 h-4 mr-2" />
+            Terminology
+          </button>
         </div>
       </div>
       <div class="flex-none">
@@ -51,6 +60,11 @@ const activeTab = ref<'overview' | 'chapters'>('overview')
       <!-- TAB: CHAPTERS -->
       <div v-else-if="activeTab === 'chapters'">
         <ChapterList />
+      </div>
+
+      <!-- TAB: TERMINOLOGY -->
+      <div v-else-if="activeTab === 'terminology'">
+        <TerminologyPanel />
       </div>
     </div>
   </div>

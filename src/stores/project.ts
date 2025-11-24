@@ -27,7 +27,19 @@ export interface BookMetadata {
   synopsis: string
 }
 
+export interface StoryTerm {
+  id: string
+  term: string
+  definition: string
+  notes?: string
+  chapters?: string[]
+}
+
 export const useProjectStore = defineStore('project', () => {
+  const isSaving = ref(false)
+  const lastSavedAt = ref<string | null>(null)
+  const loadError = ref<string | null>(null)
+
   const bookMetadata = ref<BookMetadata>({
     id: 'default-project',
     title: 'My New Novel',
@@ -45,33 +57,47 @@ export const useProjectStore = defineStore('project', () => {
     { id: '1', name: 'Alice', role: 'Protagonist', bio: 'A curious explorer.', traits: 'Brave, reckless' }
   ])
 
+  const terminology = ref<StoryTerm[]>([
+    { id: 't1', term: 'The Shimmer', definition: 'A mysterious veil between worlds that fuels the plot.', chapters: ['1'] }
+  ])
+
   async function saveProject() {
+    isSaving.value = true
+    loadError.value = null
     console.log('Saving project...')
     try {
       await window.ipcRenderer.invoke('db-save-project', {
         project: JSON.parse(JSON.stringify(bookMetadata.value)),
         chapters: JSON.parse(JSON.stringify(storyOutline.value)),
-        characters: JSON.parse(JSON.stringify(characterOutline.value))
+        characters: JSON.parse(JSON.stringify(characterOutline.value)),
+        terms: JSON.parse(JSON.stringify(terminology.value)),
       })
       console.log('Project saved!')
+      lastSavedAt.value = new Date().toISOString()
     } catch (err: any) {
       console.error('Failed to save project:', err)
       // Show alert for debugging
       alert(`Failed to save project: ${err.message || err}`)
+      loadError.value = err?.message || 'Save failed'
+    } finally {
+      isSaving.value = false
     }
   }
 
   async function loadProject() {
     console.log('Loading project...')
+    loadError.value = null
     try {
       const data = await window.ipcRenderer.invoke('db-load-project')
       if (data) {
         bookMetadata.value = data.project
         storyOutline.value = data.chapters
         characterOutline.value = data.characters
+        terminology.value = data.terms || []
       }
     } catch (err) {
       console.error('Failed to load project:', err)
+      loadError.value = (err as any)?.message || 'Load failed'
     }
   }
 
@@ -119,14 +145,51 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  function addTerm(term: Omit<StoryTerm, 'id'>) {
+    terminology.value.push({ ...term, id: crypto.randomUUID(), chapters: term.chapters || [] })
+  }
+
+  function updateTerm(id: string, data: Partial<StoryTerm>) {
+    const index = terminology.value.findIndex(t => t.id === id)
+    if (index !== -1) {
+      terminology.value[index] = { ...terminology.value[index], ...data }
+    }
+  }
+
+  function deleteTerm(id: string) {
+    const index = terminology.value.findIndex(t => t.id === id)
+    if (index !== -1) {
+      terminology.value.splice(index, 1)
+    }
+  }
+
   function updateMetadata(data: Partial<BookMetadata>) {
     bookMetadata.value = { ...bookMetadata.value, ...data }
   }
 
+  function newProject(name: string) {
+    bookMetadata.value = {
+      id: crypto.randomUUID(),
+      title: name || 'Untitled Project',
+      author: '',
+      genre: '',
+      logline: '',
+      synopsis: ''
+    }
+    storyOutline.value = []
+    characterOutline.value = []
+    terminology.value = []
+    lastSavedAt.value = null
+  }
+
   return {
+    isSaving,
+    lastSavedAt,
+    loadError,
     bookMetadata,
     storyOutline,
     characterOutline,
+    terminology,
     updateMetadata,
     addChapter,
     updateChapter,
@@ -134,6 +197,10 @@ export const useProjectStore = defineStore('project', () => {
     addCharacter,
     updateCharacter,
     deleteCharacter,
+    addTerm,
+    updateTerm,
+    deleteTerm,
+    newProject,
     saveProject,
     loadProject
   }

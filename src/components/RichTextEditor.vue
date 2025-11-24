@@ -51,7 +51,7 @@ const editor = useEditor({
 watch(editor, (editorInstance) => {
   if (editorInstance) {
     if (props.modelValue) {
-      editorInstance.commands.setContent(props.modelValue, { contentType: getContentType(props.modelValue) })
+      editorInstance.commands.setContent(props.modelValue, true, { contentType: getContentType(props.modelValue) })
     }
     editorInstance.setEditable(true)
   }
@@ -59,7 +59,7 @@ watch(editor, (editorInstance) => {
 
 watch(() => props.modelValue, (newValue) => {
   if (editor.value && newValue !== editor.value.getHTML()) {
-    editor.value.commands.setContent(newValue, { contentType: getContentType(newValue) })
+    editor.value.commands.setContent(newValue, true, { contentType: getContentType(newValue) })
   }
 })
 

@@ -56,6 +56,70 @@ function stripHtml(html: string) {
   return tmp.textContent || tmp.innerText || ''
 }
 
+function buildChapterPrompt(chapter: any) {
+  const plainLogline = stripHtml(projectStore.bookMetadata.logline || '')
+  const plainSynopsis = stripHtml(projectStore.bookMetadata.synopsis || '')
+
+  const idx = projectStore.storyOutline.findIndex(c => c.id === chapter.id)
+  const prevChapter = idx > 0 ? projectStore.storyOutline[idx - 1] : null
+  const nextChapter = idx < projectStore.storyOutline.length - 1 ? projectStore.storyOutline[idx + 1] : null
+
+  const prevSummary = prevChapter ? stripHtml(prevChapter.summary || '') : ''
+  const nextSummary = nextChapter ? stripHtml(nextChapter.summary || '') : ''
+
+  const characterDetails = (chapter.characters || [])
+    .map((id: string) => projectStore.characterOutline.find(c => c.id === id))
+    .filter(Boolean)
+    .map(c => `${c!.name} (${c!.role}): ${stripHtml(c!.bio)}`)
+    .join('\n')
+
+  const termContext = projectStore.terminology
+    .filter(t => !t.chapters || t.chapters.length === 0 || t.chapters.includes(chapter.id))
+    .map(t => `${t.term}: ${t.definition}${t.notes ? ` (${t.notes})` : ''}`)
+    .join('\n')
+
+  const parts = [
+    plainLogline ? `Book Logline: ${plainLogline}` : '',
+    plainSynopsis ? `Book Synopsis: ${plainSynopsis}` : '',
+    `Chapter Title: ${chapter.title}`,
+    `Chapter Synopsis: ${stripHtml(chapter.summary || '')}`,
+    characterDetails ? `Characters present:\n${characterDetails}` : '',
+    prevSummary ? `Previous Chapter Summary: ${prevSummary}` : '',
+    nextSummary ? `Next Chapter Summary: ${nextSummary}` : '',
+    termContext ? `Terminology to honor:\n${termContext}` : '',
+    `Guidance: Maintain continuity with the previous chapter, weave in recurring terms consistently, and set up the next chapter naturally.`
+  ].filter(Boolean)
+
+  return parts.join('\n\n')
+}
+
+function buildEditSystemPrompt() {
+  const plainLogline = stripHtml(projectStore.bookMetadata.logline || '')
+  const plainSynopsis = stripHtml(projectStore.bookMetadata.synopsis || '')
+
+  const outlineContext = projectStore.storyOutline
+    .map(ch => `${ch.title}: ${stripHtml(ch.summary || '')}`)
+    .join('\n')
+
+  const termContext = projectStore.terminology
+    .map(term => `${term.term}: ${term.definition}${term.notes ? ` | Usage: ${term.notes}` : ''}`)
+    .join('\n')
+
+  const chapterContext = currentChapter.value
+    ? `Current Chapter: ${currentChapter.value.title}\nSynopsis: ${stripHtml(currentChapter.value.summary || '')}`
+    : ''
+
+  return [
+    'You are the novel\'s line editor. Keep tone, voice, and continuity steady while editing the user-selected passage.',
+    plainLogline ? `Book Logline: ${plainLogline}` : '',
+    plainSynopsis ? `Book Synopsis: ${plainSynopsis}` : '',
+    outlineContext ? `Outline (all chapters):\n${outlineContext}` : '',
+    chapterContext,
+    termContext ? `Terminology (canonical phrasing to preserve):\n${termContext}` : '',
+    'Honor existing names/terms, avoid inventing new canon, and maintain emotional throughlines set by surrounding chapters.'
+  ].filter(Boolean).join('\n\n')
+}
+
 function isHtml(content: string) {
   return /<[a-z][\s\S]*>/i.test(content)
 }
@@ -114,7 +178,7 @@ watch(currentChapterId, (newId) => {
     const chapter = projectStore.storyOutline.find(c => c.id === newId)
     if (chapter) {
       const chapterContent = chapter.content || ''
-      editor.value.commands.setContent(chapterContent, { contentType: getContentType(chapterContent) })
+      editor.value.commands.setContent(chapterContent, true, { contentType: getContentType(chapterContent) })
       // Update page count after content loads
       updatePageCount()
     }
@@ -150,9 +214,7 @@ async function generateChapter() {
   editorStore.isGenerating = true
   
   try {
-    const synopsis = stripHtml(currentChapter.value.summary)
-    const chars = chapterCharacters.value.map(c => `${c.name}: ${c.bio}`).join('\n')
-    const prompt = `Chapter Synopsis: ${synopsis}\n\nCharacters present:\n${chars}`
+    const prompt = buildChapterPrompt(currentChapter.value)
     
     // Clear editor to start fresh (or append? Let's assume fresh for "Generate" button)
     editor.value.commands.setContent('')
@@ -163,7 +225,7 @@ async function generateChapter() {
     for await (const chunk of stream) {
       markdownBuffer += chunk
       // Let TipTap's Markdown extension parse the markdown directly
-      editor.value.commands.setContent(markdownBuffer, { contentType: 'markdown' })
+      editor.value.commands.setContent(markdownBuffer, true, { contentType: 'markdown' })
     }
 
   } catch (e) {
@@ -186,7 +248,9 @@ async function handleAiPrompt() {
   
   try {
     editorStore.startGeneration()
-    const result = await generateText(promptInput.value, text, 'selection')
+    const systemPrompt = buildEditSystemPrompt()
+    const userPrompt = promptInput.value.trim() || 'Polish this passage for clarity, pacing, and voice without changing facts.'
+    const result = await generateText(userPrompt, text, 'selection', systemPrompt)
     editorStore.finishGeneration(result, text)
     showPromptInput.value = false // Close the bubble menu input
     promptInput.value = '' // Reset input
@@ -199,11 +263,17 @@ async function handleAiPrompt() {
 
 function applyChanges() {
   if (!editor.value || !currentSelectionRange.value) return
+
+  const suggested = editorStore.suggestedContent
+  const contentType = getContentType(suggested)
+  const htmlContent = contentType === 'markdown' 
+    ? (marked.parse(suggested, { async: false }) as string)
+    : suggested
   
   // Replace the selection with the new content
   editor.value.chain().focus()
     .setTextSelection(currentSelectionRange.value)
-    .insertContent(editorStore.suggestedContent)
+    .insertContent(htmlContent)
     .run()
     
   editorStore.acceptDiff()

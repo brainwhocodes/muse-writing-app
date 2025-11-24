@@ -64,9 +64,9 @@ async function generateSynopsis() {
   error.value = ''
   projectStore.bookMetadata.synopsis = '' // Clear previous
   plainSynopsis.value = ''
-  currentStep.value = 'synopsis' // Move to next step immediately to show streaming
-  
+
   let markdownBuffer = ''
+  let movedToSynopsis = false
 
   try {
     const plainLogline = stripHtml(projectStore.bookMetadata.logline)
@@ -92,6 +92,17 @@ async function generateSynopsis() {
       markdownBuffer += chunk
       plainSynopsis.value = markdownBuffer
       projectStore.bookMetadata.synopsis = await marked.parse(markdownBuffer)
+
+      // Only advance once we have content to show
+      if (!movedToSynopsis) {
+        currentStep.value = 'synopsis'
+        movedToSynopsis = true
+      }
+    }
+
+    // If stream completed without chunks but we have content, advance now
+    if (!movedToSynopsis && markdownBuffer.trim()) {
+      currentStep.value = 'synopsis'
     }
 
   } catch (e) {
