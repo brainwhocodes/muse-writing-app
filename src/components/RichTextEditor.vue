@@ -4,6 +4,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Markdown } from '@tiptap/markdown'
 import { watch, onBeforeUnmount } from 'vue'
+import { marked } from 'marked'
+import { getContentType, cleanMixedContent } from '../composables/useTextUtils'
 
 const props = defineProps<{
   modelValue: string
@@ -16,16 +18,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
-
-function isHtmlContent(value: string | undefined) {
-  if (!value) return false
-  return /<[a-z][\s\S]*>/i.test(value)
-}
-
-function getContentType(value: string | undefined) {
-  if (!value) return 'html'
-  return isHtmlContent(value) ? 'html' : 'markdown'
-}
 
 const editor = useEditor({
   content: '', // Start empty like EditorView
@@ -47,11 +39,23 @@ const editor = useEditor({
   },
 })
 
+/**
+ * Converts content to HTML if it's markdown, and cleans any mixed content
+ */
+function toHtml(value: string | undefined): string {
+  if (!value) return ''
+  let html = value
+  if (getContentType(value) === 'markdown') {
+    html = marked.parse(value, { async: false }) as string
+  }
+  return cleanMixedContent(html)
+}
+
 // Watch for editor to be ready, then set initial content
 watch(editor, (editorInstance) => {
   if (editorInstance) {
     if (props.modelValue) {
-      editorInstance.commands.setContent(props.modelValue, true, { contentType: getContentType(props.modelValue) })
+      editorInstance.commands.setContent(toHtml(props.modelValue), { emitUpdate: false })
     }
     editorInstance.setEditable(true)
   }
@@ -59,7 +63,7 @@ watch(editor, (editorInstance) => {
 
 watch(() => props.modelValue, (newValue) => {
   if (editor.value && newValue !== editor.value.getHTML()) {
-    editor.value.commands.setContent(newValue, true, { contentType: getContentType(newValue) })
+    editor.value.commands.setContent(toHtml(newValue), { emitUpdate: false })
   }
 })
 

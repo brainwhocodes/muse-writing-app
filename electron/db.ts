@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS projects (
   genre TEXT DEFAULT '',
   logline TEXT DEFAULT '',
   synopsis TEXT DEFAULT '',
+  original_premise TEXT DEFAULT '',
   created_at INTEGER DEFAULT (strftime('%s', 'now')),
   updated_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS chapters (
   "order" INTEGER NOT NULL,
   content TEXT DEFAULT '',
   character_ids TEXT DEFAULT '[]',
+  beats TEXT DEFAULT '[]',
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
@@ -39,7 +41,35 @@ CREATE TABLE IF NOT EXISTS characters (
   role TEXT DEFAULT '',
   bio TEXT DEFAULT '',
   traits TEXT DEFAULT '',
+  is_pov INTEGER DEFAULT 0,
+  voice_diction TEXT DEFAULT '',
+  voice_forbidden TEXT DEFAULT '',
+  voice_metaphors TEXT DEFAULT '',
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS terminology (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  term TEXT NOT NULL,
+  definition TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  chapter_ids TEXT DEFAULT '[]',
+  category TEXT DEFAULT 'other',
+  aliases TEXT DEFAULT '',
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS improved_prompts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  base_prompt_key TEXT NOT NULL UNIQUE,
+  original_prompt TEXT NOT NULL,
+  improved_prompt TEXT NOT NULL,
+  score INTEGER DEFAULT 0,
+  mutations TEXT DEFAULT '[]',
+  created_at INTEGER DEFAULT (strftime('%s', 'now')),
+  updated_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 `
 
@@ -64,11 +94,24 @@ export function initDb() {
 
   // Run migrations / init tables
   client.executeMultiple(CREATE_TABLES_SQL)
-    .then(() => {
-      // Schema migration: Ensure 'content' column exists for existing databases
-      return client.execute("ALTER TABLE chapters ADD COLUMN content TEXT DEFAULT ''").catch(() => {
-        // Column likely already exists, ignore error
-      })
+    .then(async () => {
+      // Schema migrations for existing databases
+      const migrations = [
+        "ALTER TABLE chapters ADD COLUMN content TEXT DEFAULT ''",
+        "ALTER TABLE chapters ADD COLUMN beats TEXT DEFAULT '[]'",
+        "ALTER TABLE characters ADD COLUMN is_pov INTEGER DEFAULT 0",
+        "ALTER TABLE characters ADD COLUMN voice_diction TEXT DEFAULT ''",
+        "ALTER TABLE characters ADD COLUMN voice_forbidden TEXT DEFAULT ''",
+        "ALTER TABLE characters ADD COLUMN voice_metaphors TEXT DEFAULT ''",
+        "ALTER TABLE terminology ADD COLUMN category TEXT DEFAULT 'other'",
+        "ALTER TABLE terminology ADD COLUMN aliases TEXT DEFAULT ''",
+        "ALTER TABLE projects ADD COLUMN original_premise TEXT DEFAULT ''"
+      ]
+      for (const sql of migrations) {
+        await client.execute(sql).catch(() => {
+          // Column likely already exists, ignore error
+        })
+      }
     })
     .catch(err => {
       console.error('Failed to initialize DB tables:', err)
@@ -78,7 +121,7 @@ export function initDb() {
 }
 
 function setupHandlers() {
-  ipcMain.handle('db-save-project', async (_, { project, chapters, characters }) => {
+  ipcMain.handle('db-save-project', async (_, { project, chapters, characters, terms }) => {
     try {
       console.log(`Saving project with ${chapters.length} chapters`)
       if (chapters.length > 0) {
@@ -93,6 +136,7 @@ function setupHandlers() {
         genre: project.genre,
         logline: project.logline,
         synopsis: project.synopsis,
+        originalPremise: project.originalPremise || '',
         updatedAt: new Date()
       }).onConflictDoUpdate({
         target: schema.projects.id,
@@ -102,6 +146,7 @@ function setupHandlers() {
           genre: project.genre,
           logline: project.logline,
           synopsis: project.synopsis,
+          originalPremise: project.originalPremise || '',
           updatedAt: new Date()
         }
       })
@@ -121,7 +166,8 @@ function setupHandlers() {
           status: c.status,
           order: index,
           content: c.content || '',
-          characterIds: JSON.stringify(c.characters || [])
+          characterIds: JSON.stringify(c.characters || []),
+          beats: JSON.stringify(c.beats || [])
         })))
       }
 
@@ -135,7 +181,27 @@ function setupHandlers() {
           name: c.name,
           role: c.role,
           bio: c.bio,
-          traits: c.traits
+          traits: c.traits,
+          isPov: c.isPov ? 1 : 0,
+          voiceDiction: c.voiceDiction || '',
+          voiceForbidden: c.voiceForbidden || '',
+          voiceMetaphors: c.voiceMetaphors || ''
+        })))
+      }
+
+      // 4. Sync Terminology
+      await db.delete(schema.terminology).where(eq(schema.terminology.projectId, projectId))
+      
+      if (terms && terms.length > 0) {
+        await db.insert(schema.terminology).values(terms.map((t: any) => ({
+          id: t.id,
+          projectId: projectId,
+          term: t.term,
+          definition: t.definition || '',
+          notes: t.notes || '',
+          chapterIds: JSON.stringify(t.chapters || []),
+          category: t.category || 'other',
+          aliases: t.aliases || ''
         })))
       }
 
@@ -167,6 +233,11 @@ function setupHandlers() {
       })
       console.log('Found characters:', dbCharacters.length)
 
+      const dbTerms = await db.query.terminology.findMany({
+        where: eq(schema.terminology.projectId, projectId)
+      })
+      console.log('Found terms:', dbTerms.length)
+
       // Transform back to store format
       return {
         project: {
@@ -175,7 +246,8 @@ function setupHandlers() {
             author: project.author,
             genre: project.genre,
             logline: project.logline,
-            synopsis: project.synopsis
+            synopsis: project.synopsis,
+            originalPremise: project.originalPremise || ''
         },
         chapters: dbChapters.map(c => ({
             id: c.id,
@@ -183,18 +255,137 @@ function setupHandlers() {
             summary: c.summary,
             status: c.status,
             content: c.content,
-            characters: JSON.parse(c.characterIds || '[]')
+            characters: JSON.parse(c.characterIds || '[]'),
+            beats: JSON.parse(c.beats || '[]')
         })),
         characters: dbCharacters.map(c => ({
             id: c.id,
             name: c.name,
             role: c.role,
             bio: c.bio,
-            traits: c.traits
+            traits: c.traits,
+            isPov: !!c.isPov,
+            voiceDiction: c.voiceDiction || '',
+            voiceForbidden: c.voiceForbidden || '',
+            voiceMetaphors: c.voiceMetaphors || ''
+        })),
+        terms: dbTerms.map(t => ({
+            id: t.id,
+            term: t.term,
+            definition: t.definition,
+            notes: t.notes,
+            chapters: JSON.parse(t.chapterIds || '[]'),
+            category: t.category || 'other',
+            aliases: t.aliases || ''
         }))
       }
     } catch (error) {
       console.error('Load Error:', error)
+      throw error
+    }
+  })
+
+  // List all projects
+  ipcMain.handle('db-list-projects', async () => {
+    try {
+      const projects = await db.query.projects.findMany({
+        orderBy: (projects, { desc }) => [desc(projects.updatedAt)]
+      })
+      return projects.map(p => ({
+        id: p.id,
+        title: p.title,
+        author: p.author,
+        updatedAt: p.updatedAt
+      }))
+    } catch (error) {
+      console.error('List Projects Error:', error)
+      throw error
+    }
+  })
+
+  // Delete a project
+  ipcMain.handle('db-delete-project', async (_, projectId: string) => {
+    try {
+      // Delete related data first (cascade should handle but be explicit)
+      await db.delete(schema.chapters).where(eq(schema.chapters.projectId, projectId))
+      await db.delete(schema.characters).where(eq(schema.characters.projectId, projectId))
+      await db.delete(schema.terminology).where(eq(schema.terminology.projectId, projectId))
+      await db.delete(schema.projects).where(eq(schema.projects.id, projectId))
+      return { success: true }
+    } catch (error) {
+      console.error('Delete Project Error:', error)
+      throw error
+    }
+  })
+
+  // ============================================
+  // Improved Prompts (GEPA) Handlers
+  // ============================================
+
+  // Save or update an improved prompt
+  ipcMain.handle('db-save-improved-prompt', async (_, promptData: {
+    id: string
+    name: string
+    basePromptKey: string
+    originalPrompt: string
+    improvedPrompt: string
+    score: number
+    mutations: string[]
+  }) => {
+    try {
+      await db.insert(schema.improvedPrompts).values({
+        id: promptData.id,
+        name: promptData.name,
+        basePromptKey: promptData.basePromptKey,
+        originalPrompt: promptData.originalPrompt,
+        improvedPrompt: promptData.improvedPrompt,
+        score: Math.round(promptData.score * 100),
+        mutations: JSON.stringify(promptData.mutations),
+        updatedAt: new Date()
+      }).onConflictDoUpdate({
+        target: schema.improvedPrompts.basePromptKey,
+        set: {
+          improvedPrompt: promptData.improvedPrompt,
+          score: Math.round(promptData.score * 100),
+          mutations: JSON.stringify(promptData.mutations),
+          updatedAt: new Date()
+        }
+      })
+      return { success: true }
+    } catch (error) {
+      console.error('Save Improved Prompt Error:', error)
+      throw error
+    }
+  })
+
+  // Load all improved prompts
+  ipcMain.handle('db-load-improved-prompts', async () => {
+    try {
+      const prompts = await db.query.improvedPrompts.findMany()
+      return prompts.map(p => ({
+        id: p.id,
+        name: p.name,
+        basePromptKey: p.basePromptKey,
+        originalPrompt: p.originalPrompt,
+        improvedPrompt: p.improvedPrompt,
+        score: (p.score || 0) / 100,
+        mutations: JSON.parse(p.mutations || '[]'),
+        createdAt: p.createdAt?.toISOString() || new Date().toISOString(),
+        updatedAt: p.updatedAt?.toISOString() || new Date().toISOString()
+      }))
+    } catch (error) {
+      console.error('Load Improved Prompts Error:', error)
+      throw error
+    }
+  })
+
+  // Delete an improved prompt (reset to original)
+  ipcMain.handle('db-delete-improved-prompt', async (_, basePromptKey: string) => {
+    try {
+      await db.delete(schema.improvedPrompts).where(eq(schema.improvedPrompts.basePromptKey, basePromptKey))
+      return { success: true }
+    } catch (error) {
+      console.error('Delete Improved Prompt Error:', error)
       throw error
     }
   })

@@ -1,14 +1,18 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { generateText } from '../services/ai'
 import { AI_PROMPTS } from '../constants/prompts'
-import { Sparkles, User, PenTool, Book, Tag } from 'lucide-vue-next'
+import { Sparkles, User, PenTool, Book, Tag, RefreshCw, FileText } from 'lucide-vue-next'
 import RichTextEditor from './RichTextEditor.vue'
 import { marked } from 'marked'
 
 const projectStore = useProjectStore()
 const isGeneratingLogline = ref(false)
+const isGeneratingSynopsis = ref(false)
+const showOriginalPremise = ref(false)
+
+const hasChapters = computed(() => projectStore.storyOutline.length > 0)
 
 function stripHtml(html: string) {
   const tmp = document.createElement("DIV")
@@ -49,6 +53,47 @@ async function refineLogline() {
     // meaningful error handling or toast could go here
   } finally {
     isGeneratingLogline.value = false
+  }
+}
+
+async function regenerateSynopsis() {
+  if (isGeneratingSynopsis.value || !hasChapters.value) return
+  isGeneratingSynopsis.value = true
+  
+  try {
+    const metadata = projectStore.bookMetadata
+    const chapters = projectStore.storyOutline
+    const characters = projectStore.characterOutline
+    
+    // Build context from chapters
+    const chapterSummaries = chapters
+      .map((c, i) => `${i + 1}. ${c.title}: ${c.summary}`)
+      .join('\n')
+    
+    const characterList = characters
+      .map(c => `- ${c.name} (${c.role}): ${c.traits}`)
+      .join('\n')
+    
+    const prompt = `BOOK: ${metadata.title}
+GENRE: ${metadata.genre}
+${metadata.originalPremise ? `ORIGINAL PREMISE: ${metadata.originalPremise}\n` : ''}
+CHAPTERS:
+${chapterSummaries}
+
+CHARACTERS:
+${characterList || 'Not specified'}
+
+Generate a compelling synopsis that captures the story arc based on these chapter summaries.`
+
+    const result = await generateText(prompt, '', 'outline', AI_PROMPTS.SYNOPSIS_GENERATOR)
+    
+    if (result) {
+      projectStore.bookMetadata.synopsis = await marked.parse(result)
+    }
+  } catch (e) {
+    console.error('Failed to generate synopsis:', e)
+  } finally {
+    isGeneratingSynopsis.value = false
   }
 }
 </script>
@@ -139,12 +184,42 @@ async function refineLogline() {
       </div>
     </div>
 
+    <!-- Original Premise (if exists) -->
+    <div v-if="projectStore.bookMetadata.originalPremise" class="bg-base-200/50 rounded-xl border border-base-200 overflow-hidden">
+      <button 
+        @click="showOriginalPremise = !showOriginalPremise"
+        class="w-full flex items-center gap-3 p-4 hover:bg-base-200/50 transition-colors text-left"
+      >
+        <FileText class="w-4 h-4 text-base-content/50" />
+        <span class="text-sm font-medium text-base-content/70">Original Generation Prompt</span>
+        <span class="ml-auto text-xs text-base-content/40">{{ showOriginalPremise ? 'Hide' : 'Show' }}</span>
+      </button>
+      <div v-if="showOriginalPremise" class="px-4 pb-4">
+        <div class="bg-base-100 rounded-lg p-4 text-sm text-base-content/70 whitespace-pre-wrap font-mono">
+          {{ projectStore.bookMetadata.originalPremise }}
+        </div>
+      </div>
+    </div>
+
     <!-- Synopsis ("The Story") -->
     <div class="card bg-white shadow-lg border border-base-200 rounded-lg">
       <div class="card-body p-8 md:p-12">
-        <div class="flex items-center gap-3 mb-6 opacity-50">
-          <PenTool class="w-5 h-5" />
-          <h3 class="font-bold uppercase tracking-widest text-sm">Synopsis</h3>
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-3 opacity-50">
+            <PenTool class="w-5 h-5" />
+            <h3 class="font-bold uppercase tracking-widest text-sm">Synopsis</h3>
+          </div>
+          <button 
+            v-if="hasChapters"
+            @click="regenerateSynopsis"
+            class="btn btn-sm btn-ghost gap-2"
+            :disabled="isGeneratingSynopsis"
+            title="Generate synopsis from chapter outlines"
+          >
+            <RefreshCw v-if="!isGeneratingSynopsis" class="w-4 h-4" />
+            <span v-else class="loading loading-spinner loading-xs"></span>
+            {{ isGeneratingSynopsis ? 'Generating...' : 'Generate from Chapters' }}
+          </button>
         </div>
         
         <RichTextEditor 
@@ -152,6 +227,10 @@ async function refineLogline() {
           min-height="400px"
           placeholder="Once upon a time..."
         />
+        
+        <p v-if="!hasChapters" class="text-xs text-base-content/40 mt-4">
+          Tip: Add chapters to your outline, then click "Generate from Chapters" to create a synopsis automatically.
+        </p>
       </div>
     </div>
 

@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { type Character } from '../stores/project'
 import { generateText } from '../services/ai'
 import { AI_PROMPTS } from '../constants/prompts'
-import { Wand2, Sparkles } from 'lucide-vue-next'
+import { Wand2, Sparkles, Mic, AlertTriangle, Quote } from 'lucide-vue-next'
 import RichTextEditor from './RichTextEditor.vue'
 import { marked } from 'marked'
 
@@ -178,6 +178,74 @@ async function suggestTraits() {
             >
               {{ trait.trim() }}
             </span>
+          </div>
+        </div>
+
+        <div class="divider my-0"></div>
+
+        <!-- Voice Section -->
+        <div class="space-y-4">
+          <div class="flex items-center gap-2">
+            <Mic class="w-4 h-4 text-primary" />
+            <h3 class="font-bold text-sm">Voice & Diction</h3>
+            <label class="label cursor-pointer gap-2 ml-auto">
+              <span class="label-text text-xs opacity-60">POV Character</span>
+              <input 
+                type="checkbox" 
+                class="toggle toggle-primary toggle-sm" 
+                :checked="modelValue.isPov"
+                @change="updateField('isPov', ($event.target as HTMLInputElement).checked)"
+              />
+            </label>
+          </div>
+          
+          <p class="text-xs text-base-content/60 -mt-2">
+            Define this character's unique voice for consistency when writing from their POV.
+          </p>
+
+          <!-- Diction Rules -->
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs font-medium opacity-70">Diction Rules</span>
+            </label>
+            <textarea 
+              :value="modelValue.voiceDiction || ''"
+              @input="updateField('voiceDiction', ($event.target as HTMLTextAreaElement).value)"
+              class="textarea textarea-bordered textarea-sm h-20 text-sm leading-relaxed" 
+              placeholder="e.g. Uses short, clipped sentences. Prefers Anglo-Saxon words over Latin roots. Never uses contractions when angry."
+            ></textarea>
+          </div>
+
+          <!-- Forbidden Phrases -->
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs font-medium opacity-70 flex items-center gap-1">
+                <AlertTriangle class="w-3 h-3 text-warning" />
+                Forbidden Words/Phrases
+              </span>
+            </label>
+            <textarea 
+              :value="modelValue.voiceForbidden || ''"
+              @input="updateField('voiceForbidden', ($event.target as HTMLTextAreaElement).value)"
+              class="textarea textarea-bordered textarea-sm h-16 text-sm leading-relaxed" 
+              placeholder="e.g. 'awesome', 'literally', modern slang, passive voice"
+            ></textarea>
+          </div>
+
+          <!-- Signature Metaphors -->
+          <div class="form-control">
+            <label class="label py-1">
+              <span class="label-text text-xs font-medium opacity-70 flex items-center gap-1">
+                <Quote class="w-3 h-3 text-secondary" />
+                Signature Metaphors & Phrases
+              </span>
+            </label>
+            <textarea 
+              :value="modelValue.voiceMetaphors || ''"
+              @input="updateField('voiceMetaphors', ($event.target as HTMLTextAreaElement).value)"
+              class="textarea textarea-bordered textarea-sm h-16 text-sm leading-relaxed" 
+              placeholder="e.g. Compares things to machinery. Uses nautical terms. Favorite saying: 'The river always finds the sea.'"
+            ></textarea>
           </div>
         </div>
 

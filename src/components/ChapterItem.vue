@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { type StoryChapter, useProjectStore } from '../stores/project'
-import { User, ChevronUp, ChevronDown, Edit3, Sparkles } from 'lucide-vue-next'
+import { User, ChevronUp, ChevronDown, Edit3, Sparkles, Trash2, Square, CheckSquare } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   (e: 'edit', chapter: StoryChapter): void
   (e: 'generate', chapterId: string): void
   (e: 'transition', chapterId: string): void
+  (e: 'delete', chapterId: string): void
+  (e: 'toggle-select', chapterId: string): void
 }>()
 
 const props = withDefaults(defineProps<{
@@ -15,9 +17,13 @@ const props = withDefaults(defineProps<{
   totalChapters: number
   isGenerating?: boolean
   isGeneratingTransition?: boolean
+  isSelectMode?: boolean
+  isSelected?: boolean
 }>(), {
   isGenerating: false,
-  isGeneratingTransition: false
+  isGeneratingTransition: false,
+  isSelectMode: false,
+  isSelected: false
 })
 
 const projectStore = useProjectStore()
@@ -59,8 +65,22 @@ function moveDown() {
   >
     <div class="card-body p-4 flex-row gap-4 items-start">
       
-      <!-- Drag/Move Controls -->
-      <div class="flex flex-col gap-1 items-center text-base-content/30 pt-1">
+      <!-- Select Checkbox (in select mode) -->
+      <div v-if="isSelectMode" class="flex items-center pt-1">
+        <button 
+          @click.stop="$emit('toggle-select', chapter.id)" 
+          class="btn btn-ghost btn-xs btn-square h-8 w-8 min-h-0"
+        >
+          <component 
+            :is="isSelected ? CheckSquare : Square" 
+            class="w-5 h-5" 
+            :class="isSelected ? 'text-primary' : 'text-base-content/40'"
+          />
+        </button>
+      </div>
+
+      <!-- Drag/Move Controls (normal mode) -->
+      <div v-else class="flex flex-col gap-1 items-center text-base-content/30 pt-1">
         <button 
           @click.stop="moveUp" 
           class="btn btn-ghost btn-xs btn-square h-6 w-6 min-h-0" 
@@ -79,7 +99,10 @@ function moveDown() {
       </div>
 
       <!-- Main Content -->
-      <div class="flex-1 min-w-0 cursor-pointer" @click="$emit('edit', chapter)">
+      <div 
+        class="flex-1 min-w-0 cursor-pointer" 
+        @click="isSelectMode ? $emit('toggle-select', chapter.id) : $emit('edit', chapter)"
+      >
         <div class="flex justify-between items-start mb-1">
           <h3 class="font-bold text-lg truncate pr-4 group-hover:text-primary transition-colors">
             {{ chapter.title || 'Untitled Chapter' }}
@@ -138,6 +161,13 @@ function moveDown() {
               <Edit3 class="w-3 h-3" />
               <span v-if="!isGeneratingTransition">Transition</span>
               <span v-else class="loading loading-xs"></span>
+            </button>
+            <button 
+              class="btn btn-ghost btn-xs gap-1 text-error"
+              @click.stop="$emit('delete', chapter.id)"
+            >
+              <Trash2 class="w-3 h-3" />
+              Delete
             </button>
           </div>
 

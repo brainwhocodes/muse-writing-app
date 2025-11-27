@@ -33,7 +33,8 @@ const settingsStore = useSettingsStore()
         @change="(e) => settingsStore.setModel((e.target as HTMLSelectElement).value)"
         class="select select-bordered"
       >
-        <option value="">Select a model</option>
+        <option value="moonshotai/kimi-linear-48b-a3b-instruct">Kimi K2 Linear Instruct</option>
+
         <option value="moonshotai/kimi-k2-thinking" selected>Kimi K2 Thinking</option>
         <option value="google/gemini-3-pro-preview">Gemini 3 Pro Preview</option>
         <option value="anthropic/claude-3-opus">Claude 3 Opus</option>

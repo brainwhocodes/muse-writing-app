@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+export interface StoryBeat {
+  id: string
+  text: string
+  resolved: boolean
+}
+
 export interface StoryChapter {
   id: string
   title: string
@@ -8,6 +14,7 @@ export interface StoryChapter {
   status: 'draft' | 'complete' | 'idea'
   content?: string // The actual chapter text
   characters?: string[] // Array of character IDs
+  beats?: StoryBeat[] // Story beats to hit in this chapter
 }
 
 export interface Character {
@@ -16,6 +23,10 @@ export interface Character {
   role: string
   bio: string
   traits: string
+  isPov?: boolean
+  voiceDiction?: string
+  voiceForbidden?: string
+  voiceMetaphors?: string
 }
 
 export interface BookMetadata {
@@ -25,6 +36,7 @@ export interface BookMetadata {
   genre: string
   logline: string
   synopsis: string
+  originalPremise?: string // The prompt used to generate the outline
 }
 
 export interface StoryTerm {
@@ -33,33 +45,66 @@ export interface StoryTerm {
   definition: string
   notes?: string
   chapters?: string[]
+  category?: 'place' | 'object' | 'concept' | 'character' | 'event' | 'other'
+  aliases?: string
+}
+
+export interface ProjectListItem {
+  id: string
+  title: string
+  author: string
+  updatedAt: Date | null
 }
 
 export const useProjectStore = defineStore('project', () => {
   const isSaving = ref(false)
   const lastSavedAt = ref<string | null>(null)
   const loadError = ref<string | null>(null)
+  const projectList = ref<ProjectListItem[]>([])
+  const currentProjectId = ref<string | null>(null)
 
   const bookMetadata = ref<BookMetadata>({
-    id: 'default-project',
+    id: '',
     title: 'My New Novel',
     author: '',
     genre: '',
     logline: '',
     synopsis: ''
   })
-  // Initialize with some dummy data for now
-  const storyOutline = ref<StoryChapter[]>([
-    { id: '1', title: 'Chapter 1: The Beginning', summary: 'Hero wakes up in a strange world.', status: 'draft' }
-  ])
   
-  const characterOutline = ref<Character[]>([
-    { id: '1', name: 'Alice', role: 'Protagonist', bio: 'A curious explorer.', traits: 'Brave, reckless' }
-  ])
+  const storyOutline = ref<StoryChapter[]>([])
+  const characterOutline = ref<Character[]>([])
+  const terminology = ref<StoryTerm[]>([])
 
-  const terminology = ref<StoryTerm[]>([
-    { id: 't1', term: 'The Shimmer', definition: 'A mysterious veil between worlds that fuels the plot.', chapters: ['1'] }
-  ])
+  async function listProjects(): Promise<ProjectListItem[]> {
+    try {
+      const projects = await window.ipcRenderer.invoke('db-list-projects')
+      projectList.value = projects
+      return projects
+    } catch (err) {
+      console.error('Failed to list projects:', err)
+      return []
+    }
+  }
+
+  async function deleteProject(projectId: string) {
+    try {
+      await window.ipcRenderer.invoke('db-delete-project', projectId)
+      projectList.value = projectList.value.filter(p => p.id !== projectId)
+      // If we deleted the current project, clear state
+      if (currentProjectId.value === projectId) {
+        currentProjectId.value = null
+        newProject('Untitled Project')
+      }
+    } catch (err) {
+      console.error('Failed to delete project:', err)
+      throw err
+    }
+  }
+
+  async function switchProject(projectId: string) {
+    await loadProject(projectId)
+  }
 
   async function saveProject() {
     isSaving.value = true
@@ -84,16 +129,22 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  async function loadProject() {
-    console.log('Loading project...')
+  async function loadProject(projectId?: string) {
+    const idToLoad = projectId || currentProjectId.value || 'default-project'
+    console.log('Loading project:', idToLoad)
     loadError.value = null
     try {
-      const data = await window.ipcRenderer.invoke('db-load-project')
+      const data = await window.ipcRenderer.invoke('db-load-project', idToLoad)
       if (data) {
         bookMetadata.value = data.project
         storyOutline.value = data.chapters
         characterOutline.value = data.characters
         terminology.value = data.terms || []
+        currentProjectId.value = data.project.id
+        lastSavedAt.value = new Date().toISOString()
+      } else {
+        // No project found, create a new one
+        newProject('Untitled Project')
       }
     } catch (err) {
       console.error('Failed to load project:', err)
@@ -101,8 +152,13 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
-  function addChapter(chapter: Omit<StoryChapter, 'id'>) {
-    storyOutline.value.push({ ...chapter, id: crypto.randomUUID(), characters: chapter.characters || [] })
+  function addChapter(chapter: Omit<StoryChapter, 'id'>, atIndex?: number) {
+    const newChapter = { ...chapter, id: crypto.randomUUID(), characters: chapter.characters || [] }
+    if (typeof atIndex === 'number' && atIndex >= 0 && atIndex <= storyOutline.value.length) {
+      storyOutline.value.splice(atIndex, 0, newChapter)
+    } else {
+      storyOutline.value.push(newChapter)
+    }
   }
 
   function updateChapter(id: string, data: Partial<StoryChapter>) {
@@ -124,6 +180,13 @@ export const useProjectStore = defineStore('project', () => {
       const temp = storyOutline.value[index]
       storyOutline.value[index] = storyOutline.value[index + 1]
       storyOutline.value[index + 1] = temp
+    }
+  }
+
+  function deleteChapter(id: string) {
+    const index = storyOutline.value.findIndex(c => c.id === id)
+    if (index !== -1) {
+      storyOutline.value.splice(index, 1)
     }
   }
 
@@ -168,8 +231,9 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function newProject(name: string) {
+    const newId = crypto.randomUUID()
     bookMetadata.value = {
-      id: crypto.randomUUID(),
+      id: newId,
       title: name || 'Untitled Project',
       author: '',
       genre: '',
@@ -179,6 +243,7 @@ export const useProjectStore = defineStore('project', () => {
     storyOutline.value = []
     characterOutline.value = []
     terminology.value = []
+    currentProjectId.value = newId
     lastSavedAt.value = null
   }
 
@@ -186,6 +251,8 @@ export const useProjectStore = defineStore('project', () => {
     isSaving,
     lastSavedAt,
     loadError,
+    projectList,
+    currentProjectId,
     bookMetadata,
     storyOutline,
     characterOutline,
@@ -194,6 +261,7 @@ export const useProjectStore = defineStore('project', () => {
     addChapter,
     updateChapter,
     moveChapter,
+    deleteChapter,
     addCharacter,
     updateCharacter,
     deleteCharacter,
@@ -202,6 +270,9 @@ export const useProjectStore = defineStore('project', () => {
     deleteTerm,
     newProject,
     saveProject,
-    loadProject
+    loadProject,
+    listProjects,
+    deleteProject,
+    switchProject
   }
 })
