@@ -35,6 +35,7 @@ const emit = defineEmits<{
   (e: 'update:currentIndex', value: number): void
   (e: 'update:useGepa', value: boolean): void
   (e: 'update:iterations', value: number): void
+  (e: 'start'): void
   (e: 'apply', index: number): void
   (e: 'applyAll'): void
   (e: 'close'): void
@@ -183,7 +184,7 @@ function navigateContinuity(direction: 'prev' | 'next') {
               </div>
               <!-- Fixes Applied -->
               <div v-if="currentResult?.reflection?.fixes?.length" class="space-y-1">
-                <h5 class="text-xs font-bold uppercase tracking-wide text-success/70">Fixes Applied</h5>
+                <h5 class="text-xs font-bold uppercase tracking-wide text-success/70">Continuity Fixes</h5>
                 <ul class="text-sm space-y-1">
                   <li v-for="(fix, idx) in currentResult.reflection.fixes" :key="idx" class="flex items-start gap-2">
                     <span class="text-success mt-0.5">✓</span>
@@ -191,9 +192,22 @@ function navigateContinuity(direction: 'prev' | 'next') {
                   </li>
                 </ul>
               </div>
+              <!-- Story Improvements -->
+              <div v-if="currentResult?.reflection?.storyImprovements?.length" class="space-y-1">
+                <h5 class="text-xs font-bold uppercase tracking-wide text-primary/70 flex items-center gap-1">
+                  <Sparkles class="w-3 h-3" />
+                  Story Improvements
+                </h5>
+                <ul class="text-sm space-y-1">
+                  <li v-for="(improvement, idx) in currentResult.reflection.storyImprovements" :key="idx" class="flex items-start gap-2">
+                    <span class="text-primary mt-0.5">★</span>
+                    <span>{{ improvement }}</span>
+                  </li>
+                </ul>
+              </div>
               <!-- No issues found -->
-              <div v-if="!currentResult?.reflection?.issues?.length && !currentResult?.reflection?.fixes?.length" class="text-sm text-base-content/60 italic">
-                No major continuity issues detected. Minor polish applied.
+              <div v-if="!currentResult?.reflection?.issues?.length && !currentResult?.reflection?.fixes?.length && !currentResult?.reflection?.storyImprovements?.length" class="text-sm text-base-content/60 italic">
+                No major issues detected. Minor polish applied.
               </div>
             </div>
           </div>
@@ -260,7 +274,7 @@ function navigateContinuity(direction: 'prev' | 'next') {
                   </div>
                 </div>
                 <div v-if="currentResult?.reflection?.fixes?.length" class="space-y-1">
-                  <h5 class="text-xs font-bold uppercase tracking-wide text-success/70">Fixes to Apply</h5>
+                  <h5 class="text-xs font-bold uppercase tracking-wide text-success/70">Continuity Fixes</h5>
                   <ul class="text-sm space-y-1">
                     <li v-for="(fix, idx) in currentResult.reflection.fixes" :key="idx" class="flex items-start gap-2">
                       <span class="text-success mt-0.5">→</span>
@@ -268,8 +282,20 @@ function navigateContinuity(direction: 'prev' | 'next') {
                     </li>
                   </ul>
                 </div>
-                <div v-if="!currentResult?.reflection?.issues?.length && !currentResult?.reflection?.fixes?.length" class="text-sm text-base-content/60 italic">
-                  No major continuity issues detected. Minor polish being applied.
+                <div v-if="currentResult?.reflection?.storyImprovements?.length" class="space-y-1">
+                  <h5 class="text-xs font-bold uppercase tracking-wide text-primary/70 flex items-center gap-1">
+                    <Sparkles class="w-3 h-3" />
+                    Story Improvements
+                  </h5>
+                  <ul class="text-sm space-y-1">
+                    <li v-for="(improvement, idx) in currentResult.reflection.storyImprovements" :key="idx" class="flex items-start gap-2">
+                      <span class="text-primary mt-0.5">★</span>
+                      <span>{{ improvement }}</span>
+                    </li>
+                  </ul>
+                </div>
+                <div v-if="!currentResult?.reflection?.issues?.length && !currentResult?.reflection?.fixes?.length && !currentResult?.reflection?.storyImprovements?.length" class="text-sm text-base-content/60 italic">
+                  No major issues detected. Minor polish being applied.
                 </div>
               </div>
             </div>
@@ -277,7 +303,9 @@ function navigateContinuity(direction: 'prev' | 'next') {
             <!-- Generating improvements indicator -->
             <div class="flex items-center justify-center gap-3 p-4 rounded-xl bg-primary/10 border border-primary/20">
               <Loader2 class="w-5 h-5 animate-spin text-primary" />
-              <span class="text-sm">Generating improved chapter based on analysis...</span>
+              <span class="text-sm">
+                Generating improved chapter{{ currentResult?.iterationCount && iterations > 1 ? ` (pass ${currentResult.iterationCount}/${iterations})` : '' }}...
+              </span>
             </div>
           </template>
 
@@ -296,17 +324,76 @@ function navigateContinuity(direction: 'prev' | 'next') {
           <p>Failed to process this chapter. Try again later.</p>
         </div>
 
-        <!-- Empty State -->
-        <div v-else class="flex flex-col items-center justify-center py-16 text-base-content/50">
-          <FileText class="w-8 h-8 mb-4 opacity-50" />
-          <p>Select a completed chapter to review changes.</p>
+        <!-- Empty State / Pre-Start State -->
+        <div v-else class="flex flex-col items-center justify-center py-8">
+          <!-- Show config when not started -->
+          <template v-if="!isChecking && doneCount === 0">
+            <GitCompare class="w-12 h-12 mb-4 text-secondary opacity-50" />
+            <h4 class="font-bold text-lg mb-2">Ready to Check Continuity</h4>
+            <p class="text-sm text-base-content/60 mb-6 text-center max-w-md">
+              This will analyze {{ totalCount }} chapter{{ totalCount !== 1 ? 's' : '' }} for continuity issues and story improvements.
+            </p>
+            
+            <!-- Settings Panel -->
+            <div class="bg-base-200/50 rounded-xl p-4 w-full max-w-sm space-y-4">
+              <!-- GEPA Toggle -->
+              <label class="flex items-center justify-between cursor-pointer">
+                <div>
+                  <span class="font-medium">GEPA Mode</span>
+                  <p class="text-xs text-base-content/60">Multi-pass analysis & improvement</p>
+                </div>
+                <input 
+                  type="checkbox" 
+                  class="toggle toggle-secondary" 
+                  :checked="useGepa"
+                  @change="emit('update:useGepa', ($event.target as HTMLInputElement).checked)"
+                />
+              </label>
+              
+              <!-- Iterations -->
+              <div v-if="useGepa" class="flex items-center justify-between">
+                <div>
+                  <span class="font-medium">Improvement Passes</span>
+                  <p class="text-xs text-base-content/60">More passes = better intros</p>
+                </div>
+                <select 
+                  class="select select-sm select-bordered w-20"
+                  :value="iterations"
+                  @change="emit('update:iterations', Number(($event.target as HTMLSelectElement).value))"
+                >
+                  <option :value="1">1</option>
+                  <option :value="2">2</option>
+                  <option :value="3">3</option>
+                </select>
+              </div>
+            </div>
+          </template>
+          
+          <!-- Fallback empty state -->
+          <template v-else>
+            <FileText class="w-8 h-8 mb-4 opacity-50" />
+            <p>Select a completed chapter to review changes.</p>
+          </template>
         </div>
       </div>
 
       <!-- Modal Actions -->
       <div class="modal-action border-t border-base-200 pt-4 mt-4">
         <button @click="emit('close')" class="btn btn-ghost">Close</button>
+        
+        <!-- Start button when not yet started -->
         <button 
+          v-if="!isChecking && doneCount === 0"
+          @click="emit('start')" 
+          class="btn btn-secondary"
+        >
+          <GitCompare class="w-4 h-4 mr-2" />
+          Start Analysis
+        </button>
+        
+        <!-- Accept All when done -->
+        <button 
+          v-else
           @click="emit('applyAll')" 
           class="btn btn-primary"
           :disabled="isChecking || doneCount === 0"

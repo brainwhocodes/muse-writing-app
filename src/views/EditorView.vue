@@ -465,7 +465,7 @@ function cleanJsonResponse(text: string): string {
   return cleaned.trim()
 }
 
-async function runContinuityCheck() {
+function openContinuityModal() {
   const chaptersWithContent = projectStore.storyOutline.filter(c => c.content && c.content.trim().length > 0)
   if (chaptersWithContent.length === 0) {
     alert('No chapters have content to check. Generate or write some chapters first.')
@@ -480,6 +480,10 @@ async function runContinuityCheck() {
   }))
   currentContinuityIndex.value = 0
   showContinuityModal.value = true
+  // Don't start checking yet - let user configure and click Start
+}
+
+async function startContinuityCheck() {
   isContinuityChecking.value = true
   gepaContinuityStage.value = null
   
@@ -877,7 +881,7 @@ function formatParagraphs() {
         <!-- Continuity Check Button -->
         <button 
           v-if="projectStore.storyOutline.some(c => c.content && c.content.trim().length > 0)"
-          @click="runContinuityCheck" 
+          @click="openContinuityModal" 
           class="btn btn-ghost gap-2"
           :disabled="isContinuityChecking"
         >
@@ -1136,6 +1140,7 @@ function formatParagraphs() {
       @update:current-index="currentContinuityIndex = $event"
       @update:use-gepa="useGEPAContinuity = $event"
       @update:iterations="gepaIterations = $event"
+      @start="startContinuityCheck"
       @apply="applyContinuityChange"
       @apply-all="applyAllContinuityChanges"
       @close="closeContinuityModal"
