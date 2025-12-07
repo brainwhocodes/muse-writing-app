@@ -158,6 +158,15 @@ function cleanJsonResponse(text: string): string {
   return cleaned
 }
 
+function parseJsonSafe<T>(text: string, fallback: T): T {
+  try {
+    return JSON.parse(text) as T
+  } catch (err) {
+    console.warn('JSON parse failed, returning fallback', err)
+    return fallback
+  }
+}
+
 function extractChapterNumber(title: string): number {
   // Try to extract chapter number from title like "Chapter 1: Title" or "1. Title" or "Chapter One"
   const patterns = [
@@ -208,21 +217,90 @@ async function generateOutline() {
         storyData = JSON.parse(objectMatch[0])
       } catch (parseError) {
         console.error('JSON parse error, trying to fix...', parseError)
-        // Try to fix common JSON issues - trailing commas, etc.
         const fixedJson = objectMatch[0]
           .replace(/,\s*}/g, '}')
           .replace(/,\s*]/g, ']')
         storyData = JSON.parse(fixedJson)
       }
-      
-      // Add chapters (sorted by chapter number)
+
+      // Extract Story Bible from premise + outline
+      try {
+        const biblePromptParts = [
+          `Premise: ${outlineForm.value.premise}`,
+          outlineForm.value.genre ? `Genre: ${outlineForm.value.genre}` : '',
+          outlineForm.value.tone ? `Tone: ${outlineForm.value.tone}` : '',
+          storyData.chapters ? `Outline:\n${storyData.chapters.map((c, i) => `${i + 1}. ${c.title}: ${c.summary}`).join('\n')}` : ''
+        ].filter(Boolean)
+        const bibleRaw = await generateText(biblePromptParts.join('\n\n'), '', 'outline', promptStore.getPrompt('STORY_BIBLE_EXTRACTOR'))
+        const bibleClean = cleanJsonResponse(bibleRaw)
+        const bibleParsed = parseJsonSafe<{
+          coreThemes?: string
+          characterTerminologies?: string
+          toneGuidelines?: string
+          narrativeArc?: string
+          motifs?: string
+          worldRules?: string
+        }>(bibleClean, {})
+        projectStore.storyBible = {
+          coreThemes: bibleParsed.coreThemes || '',
+          characterTerminologies: bibleParsed.characterTerminologies || '',
+          toneGuidelines: bibleParsed.toneGuidelines || '',
+          narrativeArc: bibleParsed.narrativeArc || '',
+          motifs: bibleParsed.motifs || '',
+          worldRules: bibleParsed.worldRules || ''
+        }
+      } catch (err) {
+        console.warn('Story Bible extraction failed', err)
+      }
+
+      // Build placeholders (architect pass)
+      let placeholders: Array<{ id?: string; title?: string; placeholder?: string; summary?: string }> = []
+      try {
+        const placeholderPrompt = [
+          `Story Bible:\n${JSON.stringify(projectStore.storyBible)}`,
+          `Target chapters: ${outlineForm.value.chapterCount}`,
+          outlineForm.value.premise ? `Premise:\n${outlineForm.value.premise}` : '',
+          storyData.chapters ? `Existing outline:\n${storyData.chapters.map((c, i) => `${i + 1}. ${c.title}: ${c.summary}`).join('\n')}` : ''
+        ].filter(Boolean).join('\n\n')
+        const placeholderRaw = await generateText(placeholderPrompt, '', 'outline', promptStore.getPrompt('ARCHITECT_PLACEHOLDER'))
+        const placeholderClean = cleanJsonResponse(placeholderRaw)
+        const match = placeholderClean.match(/\[[\s\S]*\]/s)
+        placeholders = match ? parseJsonSafe(match[0], []) : []
+      } catch (err) {
+        console.warn('Placeholder generation failed', err)
+      }
+
+      // Validate placeholders against Story Bible (validator pass)
+      let validations: Array<{ id?: string; validatorNotes?: string; draftStatus?: string }> = []
+      try {
+        if (placeholders.length) {
+          const validatorPrompt = [
+            `Story Bible:\n${JSON.stringify(projectStore.storyBible)}`,
+            `Placeholders:\n${JSON.stringify(placeholders)}`
+          ].join('\n\n')
+          const validatorRaw = await generateText(validatorPrompt, '', 'outline', promptStore.getPrompt('SKELETON_VALIDATOR'))
+          const validatorClean = cleanJsonResponse(validatorRaw)
+          const match = validatorClean.match(/\[[\s\S]*\]/s)
+          validations = match ? parseJsonSafe(match[0], []) : []
+        }
+      } catch (err) {
+        console.warn('Placeholder validation failed', err)
+      }
+
+      // Add chapters (sorted by chapter number) with placeholder + draft status
       if (storyData.chapters && outlineForm.value.generateChapters) {
         const sortedChapters = sortChaptersByNumber(storyData.chapters)
-        sortedChapters.forEach((c: { title: string; summary: string }) => {
+        sortedChapters.forEach((c: { title: string; summary: string }, idx: number) => {
+          const placeholder = placeholders[idx]
+          const validation = (placeholder && validations.find(v => v.id === placeholder.id)) || validations[idx] || {}
           projectStore.addChapter({
-            title: c.title,
-            summary: c.summary,
+            title: placeholder?.title || c.title || `Chapter ${idx + 1}`,
+            summary: c.summary || placeholder?.summary || '',
             status: 'idea',
+            draftStatus: validation.draftStatus || (placeholder ? 'skeleton' : 'idea'),
+            placeholder: placeholder?.placeholder || '',
+            validatorNotes: validation.validatorNotes || '',
+            denseSummary: '',
             characters: []
           })
         })
@@ -295,11 +373,15 @@ Premise: ${outlineForm.value.premise}`,
         }
         // Sort chapters by number before adding
         const sortedChapters = sortChaptersByNumber(chapters)
-        sortedChapters.forEach((c) => {
+        sortedChapters.forEach((c, idx) => {
           projectStore.addChapter({
             title: c.title,
             summary: c.summary,
             status: 'idea',
+            draftStatus: 'idea',
+            placeholder: '',
+            validatorNotes: '',
+            denseSummary: '',
             characters: []
           })
         })
@@ -308,6 +390,10 @@ Premise: ${outlineForm.value.premise}`,
           title: 'AI Generated Chapter',
           summary: result,
           status: 'idea',
+          draftStatus: 'idea',
+          placeholder: '',
+          validatorNotes: '',
+          denseSummary: '',
           characters: []
         })
       }
@@ -335,45 +421,59 @@ async function batchGenerateChapters() {
       return plainSummary.length > 0
     })
 
-    for (let i = 0; i < chaptersToGenerate.length; i++) {
-      const chapter = chaptersToGenerate[i]
-      const chapterPrompt = buildChapterPrompt(chapter)
-      
-      if (useGEPA.value) {
-        batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Drafting...`
-        gepaStage.value = 'draft'
-        const draft = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER'))
-        
-        batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Reflecting...`
-        gepaStage.value = 'reflect'
-        const reflectPrompt = `CHAPTER SYNOPSIS:\n${chapterPrompt}\n\nDRAFT TO REVIEW:\n${draft}`
-        const reflectionRaw = await generateText(reflectPrompt, '', 'outline', promptStore.getPrompt('GEPA_CHAPTER_REFLECT'))
-        
-        let reflection: { strengths: string[]; weaknesses: string[]; suggestions: string[]; priority_fix: string }
-        try {
-          const cleaned = cleanJsonResponse(reflectionRaw)
-          const jsonMatch = cleaned.match(/\{[\s\S]*\}/s)
-          reflection = jsonMatch ? JSON.parse(jsonMatch[0]) : { strengths: [], weaknesses: [], suggestions: [], priority_fix: 'Improve overall quality' }
-        } catch {
-          reflection = { strengths: [], weaknesses: [], suggestions: [], priority_fix: 'Improve overall quality' }
-        }
+  for (let i = 0; i < chaptersToGenerate.length; i++) {
+    const chapter = chaptersToGenerate[i]
+    const chapterPrompt = buildChapterPrompt(chapter)
+    let chapterHtml = ''
 
-        batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Improving...`
-        gepaStage.value = 'improve'
-        const improvePrompt = `ORIGINAL SYNOPSIS:\n${chapterPrompt}\n\nDRAFT:\n${draft}\n\nEDITORIAL FEEDBACK:\n- Strengths: ${reflection.strengths.join('; ')}\n- Weaknesses: ${reflection.weaknesses.join('; ')}\n- Suggestions: ${reflection.suggestions.join('; ')}\n- Priority Fix: ${reflection.priority_fix}`
-        
-        const result = await generateText(improvePrompt, '', 'outline', promptStore.getPrompt('GEPA_CHAPTER_IMPROVE'))
-        if (result) {
-          const html = await marked.parse(result)
-          projectStore.updateChapter(chapter.id, { content: html })
-        }
+    if (useGEPA.value) {
+      batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Drafting...`
+      gepaStage.value = 'draft'
+      const draft = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER_HIERARCHICAL'))
+      
+      batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Reflecting...`
+      gepaStage.value = 'reflect'
+      const reflectPrompt = `CHAPTER SYNOPSIS:\n${chapterPrompt}\n\nDRAFT TO REVIEW:\n${draft}`
+      const reflectionRaw = await generateText(reflectPrompt, '', 'outline', promptStore.getPrompt('GEPA_CHAPTER_REFLECT'))
+      
+      let reflection: { strengths: string[]; weaknesses: string[]; suggestions: string[]; priority_fix: string }
+      try {
+        const cleaned = cleanJsonResponse(reflectionRaw)
+        const jsonMatch = cleaned.match(/\{[\s\S]*\}/s)
+        reflection = jsonMatch ? JSON.parse(jsonMatch[0]) : { strengths: [], weaknesses: [], suggestions: [], priority_fix: 'Improve overall quality' }
+      } catch {
+        reflection = { strengths: [], weaknesses: [], suggestions: [], priority_fix: 'Improve overall quality' }
+      }
+
+      batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Improving...`
+      gepaStage.value = 'improve'
+      const improvePrompt = `ORIGINAL SYNOPSIS:\n${chapterPrompt}\n\nDRAFT:\n${draft}\n\nEDITORIAL FEEDBACK:\n- Strengths: ${reflection.strengths.join('; ')}\n- Weaknesses: ${reflection.weaknesses.join('; ')}\n- Suggestions: ${reflection.suggestions.join('; ')}\n- Priority Fix: ${reflection.priority_fix}`
+      
+      const improved = await generateText(improvePrompt, '', 'outline', promptStore.getPrompt('GEPA_CHAPTER_IMPROVE'))
+      chapterHtml = improved ? await marked.parse(improved) : await marked.parse(draft || '')
       } else {
         batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] Generating ${chapter.title}...`
-        const result = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER'))
+        const result = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER_HIERARCHICAL'))
         if (result) {
-          const html = await marked.parse(result)
-          projectStore.updateChapter(chapter.id, { content: html })
+          chapterHtml = await marked.parse(result)
         }
+      }
+
+      if (chapterHtml) {
+        const updatePayload: Partial<StoryChapter> = { content: chapterHtml, draftStatus: 'draft' }
+        try {
+          const summaryPrompt = `Chapter Title: ${chapter.title}\n\nFull Chapter:\n${stripHtml(chapterHtml)}`
+          const summaryRaw = await generateText(summaryPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_SUMMARIZER'))
+          const summaryClean = cleanJsonResponse(summaryRaw)
+          const summaryMatch = summaryClean.match(/\{[\s\S]*\}/s)
+          const summaryObj = summaryMatch ? parseJsonSafe(summaryMatch[0], {}) as any : {}
+          if (summaryObj?.denseSummary) {
+            updatePayload.denseSummary = summaryObj.denseSummary
+          }
+        } catch (err) {
+          console.warn('Dense summary generation failed', err)
+        }
+        projectStore.updateChapter(chapter.id, updatePayload)
       }
     }
 
@@ -389,10 +489,13 @@ async function batchGenerateChapters() {
   }
 }
 
+
+
+
 async function generateChapterWithGEPA(chapterPrompt: string): Promise<string> {
   // Stage 1: Generate initial draft
   gepaStage.value = 'draft'
-  const draft = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER'))
+  const draft = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER_HIERARCHICAL'))
   if (!draft) throw new Error('Failed to generate initial draft')
 
   // Stage 2: Reflect on the draft
@@ -434,12 +537,25 @@ async function generateChapterDraft(chapterId: string) {
     if (useGEPA.value) {
       result = await generateChapterWithGEPA(chapterPrompt)
     } else {
-      result = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER'))
+      result = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER_HIERARCHICAL'))
     }
     
     if (result) {
       const html = await marked.parse(result)
-      projectStore.updateChapter(chapter.id, { content: html })
+      const updatePayload: Partial<StoryChapter> = { content: html, draftStatus: 'draft' }
+      try {
+        const summaryPrompt = `Chapter Title: ${chapter.title}\n\nFull Chapter:\n${stripHtml(html)}`
+        const summaryRaw = await generateText(summaryPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_SUMMARIZER'))
+        const summaryClean = cleanJsonResponse(summaryRaw)
+        const summaryMatch = summaryClean.match(/\{[\s\S]*\}/s)
+        const summaryObj = summaryMatch ? parseJsonSafe(summaryMatch[0], {}) as any : {}
+        if (summaryObj?.denseSummary) {
+          updatePayload.denseSummary = summaryObj.denseSummary
+        }
+      } catch (err) {
+        console.warn('Dense summary generation failed', err)
+      }
+      projectStore.updateChapter(chapter.id, updatePayload)
     }
   } catch (e) {
     console.error(e)

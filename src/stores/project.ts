@@ -7,11 +7,27 @@ export interface StoryBeat {
   resolved: boolean
 }
 
+export interface StoryBible {
+  coreThemes: string
+  characterTerminologies: string
+  toneGuidelines: string
+  narrativeArc: string
+  motifs: string
+  worldRules: string
+}
+
 export interface StoryChapter {
   id: string
   title: string
   summary: string
   status: 'draft' | 'complete' | 'idea'
+  placeholder?: string
+  validatorNotes?: string
+  draftStatus?: 'idea' | 'skeleton' | 'validated' | 'draft' | 'complete'
+  denseSummary?: string
+  contextSnapshot?: string
+  contextTokens?: number
+  lastPromptHash?: string
   content?: string // The actual chapter text
   characters?: string[] // Array of character IDs
   beats?: StoryBeat[] // Story beats to hit in this chapter
@@ -37,6 +53,7 @@ export interface BookMetadata {
   logline: string
   synopsis: string
   originalPremise?: string // The prompt used to generate the outline
+  storyBible?: StoryBible
 }
 
 export interface StoryTerm {
@@ -63,13 +80,30 @@ export const useProjectStore = defineStore('project', () => {
   const projectList = ref<ProjectListItem[]>([])
   const currentProjectId = ref<string | null>(null)
 
+  const storyBible = ref<StoryBible>({
+    coreThemes: '',
+    characterTerminologies: '',
+    toneGuidelines: '',
+    narrativeArc: '',
+    motifs: '',
+    worldRules: ''
+  })
+
   const bookMetadata = ref<BookMetadata>({
     id: '',
     title: 'My New Novel',
     author: '',
     genre: '',
     logline: '',
-    synopsis: ''
+    synopsis: '',
+    storyBible: {
+      coreThemes: '',
+      characterTerminologies: '',
+      toneGuidelines: '',
+      narrativeArc: '',
+      motifs: '',
+      worldRules: ''
+    }
   })
   
   const storyOutline = ref<StoryChapter[]>([])
@@ -112,10 +146,10 @@ export const useProjectStore = defineStore('project', () => {
     console.log('Saving project...')
     try {
       await window.ipcRenderer.invoke('db-save-project', {
-        project: JSON.parse(JSON.stringify(bookMetadata.value)),
+        project: JSON.parse(JSON.stringify({ ...bookMetadata.value, storyBible: storyBible.value })),
         chapters: JSON.parse(JSON.stringify(storyOutline.value)),
         characters: JSON.parse(JSON.stringify(characterOutline.value)),
-        terms: JSON.parse(JSON.stringify(terminology.value)),
+        terms: JSON.parse(JSON.stringify(terminology.value))
       })
       console.log('Project saved!')
       lastSavedAt.value = new Date().toISOString()
@@ -137,9 +171,26 @@ export const useProjectStore = defineStore('project', () => {
       const data = await window.ipcRenderer.invoke('db-load-project', idToLoad)
       if (data) {
         bookMetadata.value = data.project
-        storyOutline.value = data.chapters
+        storyOutline.value = (data.chapters || []).map((c: StoryChapter) => ({
+          placeholder: '',
+          validatorNotes: '',
+          draftStatus: c.status || 'draft',
+          denseSummary: '',
+          contextSnapshot: '',
+          contextTokens: 0,
+          lastPromptHash: '',
+          ...c
+        }))
         characterOutline.value = data.characters
         terminology.value = data.terms || []
+        storyBible.value = data.project?.storyBible || {
+          coreThemes: '',
+          characterTerminologies: '',
+          toneGuidelines: '',
+          narrativeArc: '',
+          motifs: '',
+          worldRules: ''
+        }
         currentProjectId.value = data.project.id
         lastSavedAt.value = new Date().toISOString()
       } else {
@@ -153,7 +204,18 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function addChapter(chapter: Omit<StoryChapter, 'id'>, atIndex?: number) {
-    const newChapter = { ...chapter, id: crypto.randomUUID(), characters: chapter.characters || [] }
+    const newChapter: StoryChapter = { 
+      ...chapter, 
+      id: crypto.randomUUID(), 
+      characters: chapter.characters || [],
+      placeholder: chapter.placeholder || '',
+      validatorNotes: chapter.validatorNotes || '',
+      draftStatus: chapter.draftStatus || chapter.status || 'draft',
+      denseSummary: chapter.denseSummary || '',
+      contextSnapshot: chapter.contextSnapshot || '',
+      contextTokens: chapter.contextTokens || 0,
+      lastPromptHash: chapter.lastPromptHash || ''
+    }
     if (typeof atIndex === 'number' && atIndex >= 0 && atIndex <= storyOutline.value.length) {
       storyOutline.value.splice(atIndex, 0, newChapter)
     } else {
@@ -226,6 +288,10 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  function updateStoryBible(data: Partial<StoryBible>) {
+    storyBible.value = { ...storyBible.value, ...data }
+  }
+
   function updateMetadata(data: Partial<BookMetadata>) {
     bookMetadata.value = { ...bookMetadata.value, ...data }
   }
@@ -243,6 +309,14 @@ export const useProjectStore = defineStore('project', () => {
     storyOutline.value = []
     characterOutline.value = []
     terminology.value = []
+    storyBible.value = {
+      coreThemes: '',
+      characterTerminologies: '',
+      toneGuidelines: '',
+      narrativeArc: '',
+      motifs: '',
+      worldRules: ''
+    }
     currentProjectId.value = newId
     lastSavedAt.value = null
   }
@@ -257,7 +331,9 @@ export const useProjectStore = defineStore('project', () => {
     storyOutline,
     characterOutline,
     terminology,
+    storyBible,
     updateMetadata,
+    updateStoryBible,
     addChapter,
     updateChapter,
     moveChapter,

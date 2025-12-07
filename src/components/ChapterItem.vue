@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { type StoryChapter, useProjectStore } from '../stores/project'
-import { User, ChevronUp, ChevronDown, Edit3, Sparkles, Trash2, Square, CheckSquare } from 'lucide-vue-next'
+import { User, ChevronUp, ChevronDown, Edit3, Sparkles, Trash2, Square, CheckSquare, ClipboardList, Shield, BookOpenText } from 'lucide-vue-next'
 
 const emit = defineEmits<{
   (e: 'edit', chapter: StoryChapter): void
@@ -108,9 +108,14 @@ function moveDown() {
             {{ chapter.title || 'Untitled Chapter' }}
           </h3>
           
-          <!-- Status Badge -->
-          <div class="badge badge-sm badge-outline opacity-70 uppercase text-[10px] font-bold tracking-wider">
-            {{ chapter.status }}
+          <!-- Status / Draft Status -->
+          <div class="flex items-center gap-2">
+            <div class="badge badge-sm badge-outline opacity-70 uppercase text-[10px] font-bold tracking-wider">
+              {{ chapter.status }}
+            </div>
+            <div v-if="chapter.draftStatus && chapter.draftStatus !== chapter.status" class="badge badge-sm badge-ghost uppercase text-[10px]">
+              {{ chapter.draftStatus }}
+            </div>
           </div>
         </div>
 
@@ -139,8 +144,14 @@ function moveDown() {
             </div>
           </div>
 
-          <!-- Quick Action Hint -->
-          <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+          <!-- Flags + Quick Action Hint -->
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 text-[11px] text-base-content/60">
+              <span v-if="chapter.placeholder" class="badge badge-ghost badge-xs gap-1"><ClipboardList class="w-3 h-3" /> Placeholder</span>
+              <span v-if="chapter.validatorNotes" class="badge badge-ghost badge-xs gap-1"><Shield class="w-3 h-3" /> Validated</span>
+              <span v-if="chapter.denseSummary" class="badge badge-ghost badge-xs gap-1"><BookOpenText class="w-3 h-3" /> Summary</span>
+            </div>
+            <div class="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
             <button class="btn btn-ghost btn-xs gap-1 text-base-content/60" @click.stop="$emit('edit', chapter)">
               <Edit3 class="w-3 h-3" /> Edit
             </button>
@@ -169,6 +180,7 @@ function moveDown() {
               <Trash2 class="w-3 h-3" />
               Delete
             </button>
+          </div>
           </div>
 
         </div>

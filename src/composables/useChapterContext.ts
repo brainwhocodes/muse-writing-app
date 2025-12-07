@@ -7,6 +7,20 @@ import { stripHtml } from './useTextUtils'
 export function useChapterContext() {
   const projectStore = useProjectStore()
 
+  function formatStoryBible(): string {
+    const bible = projectStore.storyBible
+    if (!bible) return ''
+    const blocks = [
+      bible.coreThemes ? `CoreThemes: ${stripHtml(bible.coreThemes)}` : '',
+      bible.characterTerminologies ? `CharacterTerminologies: ${stripHtml(bible.characterTerminologies)}` : '',
+      bible.toneGuidelines ? `ToneGuidelines: ${stripHtml(bible.toneGuidelines)}` : '',
+      bible.narrativeArc ? `NarrativeArc: ${stripHtml(bible.narrativeArc)}` : '',
+      bible.motifs ? `Motifs: ${stripHtml(bible.motifs)}` : '',
+      bible.worldRules ? `WorldRules: ${stripHtml(bible.worldRules)}` : ''
+    ].filter(Boolean)
+    return blocks.length ? `Story Bible:\n${blocks.join('\n')}` : ''
+  }
+
   /**
    * Builds a comprehensive prompt context for a chapter including
    * book metadata, surrounding chapters, characters, and terminology
@@ -19,7 +33,8 @@ export function useChapterContext() {
     const prevChapter = index > 0 ? projectStore.storyOutline[index - 1] : null
     const nextChapter = index < projectStore.storyOutline.length - 1 ? projectStore.storyOutline[index + 1] : null
 
-    const prevSummary = prevChapter ? stripHtml(prevChapter.summary || '') : ''
+    const prevSummary = prevChapter ? stripHtml(prevChapter.denseSummary || prevChapter.summary || '') : ''
+    const prevDense = prevChapter?.denseSummary ? stripHtml(prevChapter.denseSummary) : ''
     const nextSummary = nextChapter ? stripHtml(nextChapter.summary || '') : ''
 
     const characterDetails = (chapter.characters || [])
@@ -36,10 +51,14 @@ export function useChapterContext() {
     const parts = [
       plainLogline ? `Book Logline: ${plainLogline}` : '',
       plainSynopsis ? `Book Synopsis: ${plainSynopsis}` : '',
+      formatStoryBible(),
       `Chapter Title: ${chapter.title}`,
       `Chapter Synopsis: ${stripHtml(chapter.summary || '')}`,
+      chapter.placeholder ? `Placeholder: ${stripHtml(chapter.placeholder)}` : '',
+      chapter.validatorNotes ? `Validator Notes: ${stripHtml(chapter.validatorNotes)}` : '',
       characterDetails ? `Characters in this chapter:\n${characterDetails}` : '',
       prevSummary ? `Previous Chapter Summary: ${prevSummary}` : '',
+      prevDense ? `Previous Dense Summary: ${prevDense}` : '',
       nextSummary ? `Next Chapter Summary: ${nextSummary}` : '',
       termContext ? `Terminology to honor:\n${termContext}` : '',
       `Guidance: Maintain continuity with the previous chapter and set up the next chapter naturally.`
@@ -71,6 +90,7 @@ export function useChapterContext() {
       'You are the novel\'s line editor. Keep tone, voice, and continuity steady while editing the user-selected passage.',
       plainLogline ? `Book Logline: ${plainLogline}` : '',
       plainSynopsis ? `Book Synopsis: ${plainSynopsis}` : '',
+      formatStoryBible(),
       outlineContext ? `Outline (all chapters):\n${outlineContext}` : '',
       chapterContext,
       termContext ? `Terminology (canonical phrasing to preserve):\n${termContext}` : '',
@@ -111,6 +131,7 @@ export function useChapterContext() {
   }
 
   return {
+    formatStoryBible,
     buildChapterPrompt,
     buildEditSystemPrompt,
     buildContinuityPrompt

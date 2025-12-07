@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useProjectStore, type StoryChapter } from '../stores/project'
 import { generateText } from '../services/ai'
 import { AI_PROMPTS } from '../constants/prompts'
-import { Wand2, User, AlignLeft, Hash, ChevronDown } from 'lucide-vue-next'
+import { Wand2, User, AlignLeft, Hash, ChevronDown, ClipboardList, Shield, BookOpenText } from 'lucide-vue-next'
 import RichTextEditor from './RichTextEditor.vue'
 import { marked } from 'marked'
 
@@ -135,6 +135,64 @@ async function suggestBeats(customPrompt?: string) {
           placeholder="Chapter Title"
           autofocus
         />
+      </div>
+
+      <div class="divider my-0"></div>
+
+      <!-- Skeleton / Validator / Rolling Context Fields -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="form-control">
+          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 flex items-center gap-1">
+            <ClipboardList class="w-4 h-4" /> Placeholder (Architect)
+          </span>
+          <textarea
+            :value="modelValue.placeholder"
+            @input="updateField('placeholder', ($event.target as HTMLTextAreaElement).value)"
+            class="textarea textarea-bordered min-h-[100px]"
+            placeholder="[SCENE_A: who/what/where/why] conflict + turn"
+          ></textarea>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 flex items-center gap-1">
+            <Shield class="w-4 h-4" /> Validator Notes
+          </span>
+          <textarea
+            :value="modelValue.validatorNotes"
+            @input="updateField('validatorNotes', ($event.target as HTMLTextAreaElement).value)"
+            class="textarea textarea-bordered min-h-[100px]"
+            placeholder="Theme/tone/arc alignment notes, gaps to fix"
+          ></textarea>
+        </label>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label class="form-control">
+          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 flex items-center gap-1">
+            <BookOpenText class="w-4 h-4" /> Draft Status
+          </span>
+          <select
+            :value="modelValue.draftStatus || modelValue.status"
+            @change="updateField('draftStatus', ($event.target as HTMLSelectElement).value as any)"
+            class="select select-bordered"
+          >
+            <option value="idea">Idea</option>
+            <option value="skeleton">Skeleton</option>
+            <option value="validated">Validated</option>
+            <option value="draft">Draft</option>
+            <option value="complete">Complete</option>
+          </select>
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs uppercase tracking-wide text-base-content/60 flex items-center gap-1">
+            <AlignLeft class="w-4 h-4" /> Dense Summary (Rolling Context)
+          </span>
+          <textarea
+            :value="modelValue.denseSummary"
+            @input="updateField('denseSummary', ($event.target as HTMLTextAreaElement).value)"
+            class="textarea textarea-bordered min-h-[100px]"
+            placeholder="80-150 word compressed summary for context reuse"
+          ></textarea>
+        </label>
       </div>
 
       <div class="divider my-0"></div>

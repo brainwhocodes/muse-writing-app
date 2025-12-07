@@ -234,6 +234,42 @@ Generate a compelling synopsis that captures the story arc based on these chapte
       </div>
     </div>
 
+    <!-- Story Bible -->
+    <div class="card bg-base-100 border border-base-200 shadow-sm">
+      <div class="card-body space-y-6">
+        <div class="flex items-center gap-3 opacity-60">
+          <Book class="w-5 h-5" />
+          <h3 class="font-bold uppercase tracking-widest text-sm">Story Bible</h3>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Core Themes</span>
+            <textarea v-model="projectStore.storyBible.coreThemes" class="textarea textarea-bordered min-h-[80px]" placeholder="Themes and motifs to stay anchored to"></textarea>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Character Terminologies</span>
+            <textarea v-model="projectStore.storyBible.characterTerminologies" class="textarea textarea-bordered min-h-[80px]" placeholder="Canon names/aliases, relationship notes"></textarea>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Tone Guidelines</span>
+            <textarea v-model="projectStore.storyBible.toneGuidelines" class="textarea textarea-bordered min-h-[80px]" placeholder="Voice, diction, pacing, mood constraints"></textarea>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Narrative Arc</span>
+            <textarea v-model="projectStore.storyBible.narrativeArc" class="textarea textarea-bordered min-h-[80px]" placeholder="Beginning -> middle -> end spine"></textarea>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Motifs</span>
+            <textarea v-model="projectStore.storyBible.motifs" class="textarea textarea-bordered min-h-[80px]" placeholder="Recurring images/symbols/phrases"></textarea>
+          </label>
+          <label class="form-control">
+            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">World Rules</span>
+            <textarea v-model="projectStore.storyBible.worldRules" class="textarea textarea-bordered min-h-[80px]" placeholder="Magic/tech/social rules to avoid contradictions"></textarea>
+          </label>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 

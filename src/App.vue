@@ -36,7 +36,13 @@ const saveStatusColor = computed(() => {
 
 // Watch for changes and mark as unsaved
 watch(
-  () => [projectStore.storyOutline, projectStore.characterOutline, projectStore.terminology, projectStore.bookMetadata],
+  () => [
+    projectStore.storyOutline, 
+    projectStore.characterOutline, 
+    projectStore.terminology, 
+    projectStore.bookMetadata,
+    projectStore.storyBible
+  ],
   () => {
     hasUnsavedChanges.value = true
     // Auto-save after 30 seconds of no changes

@@ -7,6 +7,17 @@ import path from 'path'
 
 let db: LibSQLDatabase<typeof schema>
 
+function parseJsonSafe<T>(value: unknown, fallback: T): T {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === 'object') return value as T
+  if (typeof value !== 'string') return fallback
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
+}
+
 // Manual table creation to avoid migration complexity in Electron for now
 const CREATE_TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS projects (
@@ -17,6 +28,7 @@ CREATE TABLE IF NOT EXISTS projects (
   logline TEXT DEFAULT '',
   synopsis TEXT DEFAULT '',
   original_premise TEXT DEFAULT '',
+  story_bible TEXT DEFAULT '{}',
   created_at INTEGER DEFAULT (strftime('%s', 'now')),
   updated_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
@@ -31,6 +43,13 @@ CREATE TABLE IF NOT EXISTS chapters (
   content TEXT DEFAULT '',
   character_ids TEXT DEFAULT '[]',
   beats TEXT DEFAULT '[]',
+  placeholder TEXT DEFAULT '',
+  validator_notes TEXT DEFAULT '',
+  draft_status TEXT DEFAULT 'draft',
+  dense_summary TEXT DEFAULT '',
+  context_snapshot TEXT DEFAULT '',
+  context_tokens INTEGER DEFAULT 0,
+  last_prompt_hash TEXT DEFAULT '',
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
@@ -99,13 +118,21 @@ export function initDb() {
       const migrations = [
         "ALTER TABLE chapters ADD COLUMN content TEXT DEFAULT ''",
         "ALTER TABLE chapters ADD COLUMN beats TEXT DEFAULT '[]'",
+        "ALTER TABLE chapters ADD COLUMN placeholder TEXT DEFAULT ''",
+        "ALTER TABLE chapters ADD COLUMN validator_notes TEXT DEFAULT ''",
+        "ALTER TABLE chapters ADD COLUMN draft_status TEXT DEFAULT 'draft'",
+        "ALTER TABLE chapters ADD COLUMN dense_summary TEXT DEFAULT ''",
+        "ALTER TABLE chapters ADD COLUMN context_snapshot TEXT DEFAULT ''",
+        "ALTER TABLE chapters ADD COLUMN context_tokens INTEGER DEFAULT 0",
+        "ALTER TABLE chapters ADD COLUMN last_prompt_hash TEXT DEFAULT ''",
         "ALTER TABLE characters ADD COLUMN is_pov INTEGER DEFAULT 0",
         "ALTER TABLE characters ADD COLUMN voice_diction TEXT DEFAULT ''",
         "ALTER TABLE characters ADD COLUMN voice_forbidden TEXT DEFAULT ''",
         "ALTER TABLE characters ADD COLUMN voice_metaphors TEXT DEFAULT ''",
         "ALTER TABLE terminology ADD COLUMN category TEXT DEFAULT 'other'",
         "ALTER TABLE terminology ADD COLUMN aliases TEXT DEFAULT ''",
-        "ALTER TABLE projects ADD COLUMN original_premise TEXT DEFAULT ''"
+        "ALTER TABLE projects ADD COLUMN original_premise TEXT DEFAULT ''",
+        "ALTER TABLE projects ADD COLUMN story_bible TEXT DEFAULT '{}'"
       ]
       for (const sql of migrations) {
         await client.execute(sql).catch(() => {
@@ -137,6 +164,7 @@ function setupHandlers() {
         logline: project.logline,
         synopsis: project.synopsis,
         originalPremise: project.originalPremise || '',
+        storyBible: JSON.stringify(project.storyBible || {}),
         updatedAt: new Date()
       }).onConflictDoUpdate({
         target: schema.projects.id,
@@ -147,6 +175,7 @@ function setupHandlers() {
           logline: project.logline,
           synopsis: project.synopsis,
           originalPremise: project.originalPremise || '',
+          storyBible: JSON.stringify(project.storyBible || {}),
           updatedAt: new Date()
         }
       })
@@ -167,7 +196,14 @@ function setupHandlers() {
           order: index,
           content: c.content || '',
           characterIds: JSON.stringify(c.characters || []),
-          beats: JSON.stringify(c.beats || [])
+          beats: JSON.stringify(c.beats || []),
+          placeholder: c.placeholder || '',
+          validatorNotes: c.validatorNotes || '',
+          draftStatus: c.draftStatus || c.status || 'draft',
+          denseSummary: c.denseSummary || '',
+          contextSnapshot: c.contextSnapshot || '',
+          contextTokens: c.contextTokens || 0,
+          lastPromptHash: c.lastPromptHash || ''
         })))
       }
 
@@ -247,7 +283,8 @@ function setupHandlers() {
             genre: project.genre,
             logline: project.logline,
             synopsis: project.synopsis,
-            originalPremise: project.originalPremise || ''
+            originalPremise: project.originalPremise || '',
+            storyBible: parseJsonSafe(project.storyBible, {})
         },
         chapters: dbChapters.map(c => ({
             id: c.id,
@@ -255,8 +292,15 @@ function setupHandlers() {
             summary: c.summary,
             status: c.status,
             content: c.content,
-            characters: JSON.parse(c.characterIds || '[]'),
-            beats: JSON.parse(c.beats || '[]')
+            characters: parseJsonSafe<string[]>(c.characterIds, []),
+            beats: parseJsonSafe(c.beats, []),
+            placeholder: c.placeholder || '',
+            validatorNotes: c.validatorNotes || '',
+            draftStatus: c.draftStatus || c.status || 'draft',
+            denseSummary: c.denseSummary || '',
+            contextSnapshot: c.contextSnapshot || '',
+            contextTokens: Number(c.contextTokens || 0),
+            lastPromptHash: c.lastPromptHash || ''
         })),
         characters: dbCharacters.map(c => ({
             id: c.id,

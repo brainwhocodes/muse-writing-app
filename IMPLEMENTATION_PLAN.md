@@ -1,78 +1,26 @@
-# Implementation Plan: AI-Powered Book Writing App
+# Implementation Plan: Hierarchical Expansion & Rolling Context
 
-## 1. Project Setup & Configuration
-- **Goal**: Initialize the environment with necessary styling and state management libraries.
-- **Actions**:
-  - Install `tailwindcss`, `postcss`, `autoprefixer`.
-  - Install `daisyui` plugin for Tailwind.
-  - Initialize Tailwind configuration (`tailwind.config.js`, `postcss.config.js`).
-  - Install `pinia` for global state management.
-  - Install `vue-router` for navigation between views (Editor, Outline, Characters).
-  - Install `@tiptap/vue-3` and `@tiptap/starter-kit` for the rich text editor.
-  - Install `diff` for text comparison.
-  - Install `openai` (compatible with OpenRouter) for AI API calls.
-  - Configure `src/style.css` to include Tailwind directives.
+## Phase 1: Data Modeling & Schema Design
+- [ ] Add `storyBible` object to `useProjectStore` (CoreThemes, CharacterTerminologies, ToneGuidelines, NarrativeArc, Motifs, WorldRules) and persist it to SQLite (`projects` table JSON column + IPC wiring in `electron/db.ts` handlers).
+- [ ] Extend `StoryChapter` model to track skeleton + rollout fields: `placeholder` (architect text), `validatorNotes`, `draftStatus` (idea/skeleton/validated/draft/complete), `denseSummary` (recursive summary), `contextSnapshot` (StoryBible excerpt + prev summary IDs), and persist columns in `schema.ts`/`db.ts` with backfill defaults.
+- [ ] Add per-chapter `contextWindow` data (token estimates, lastPromptHash) to help prune prompts; store lightweight numeric/text fields so UI can surface when context needs refresh.
+- [ ] Update IPC save/load paths to round-trip new fields in `db-save-project`/`db-load-project`, and guard against missing legacy fields to avoid crashes on existing projects.
+- [ ] Document data contracts in `src/stores/project.ts` (types + inline comments) so prompt builders and UI share the same canonical structure.
 
-## 2. Data Architecture (Pinia Stores)
-- **Goal**: Manage application state for the book, characters, and settings.
-- **Stores**:
-  - `useSettingsStore`: Manage OpenRouter API Key, selected model (e.g., `anthropic/claude-3-opus`, `meta-llama/llama-3-70b`), and default prompt styles.
-  - `useProjectStore`:
-    - `storyOutline`: Array of plot points/chapters (Title, Summary, Status).
-    - `characterOutlines`: Array of characters (Name, Role, Bio, Traits).
-  - `useEditorStore`:
-    - Manage the current document content.
-    - Handle selection state for AI operations.
+## Phase 2: Prompt Engineering (System & User Prompts)
+- [ ] Add prompt templates to `constants/prompts.ts` (and `promptStore.optimizablePrompts`) for: `STORY_BIBLE_EXTRACTOR`, `STORY_BIBLE_VALIDATOR`, `ARCHITECT_PLACEHOLDER`, `SKELETON_VALIDATOR`, `CHAPTER_SUMMARIZER`, `CHAPTER_WRITER_HIERARCHICAL`, `ROLLING_CONTEXT_EDIT`.
+- [ ] Refactor `useChapterContext` to assemble prompts as `[System Instructions] + [StoryBible inject] + [Prev dense summary] + [Current placeholder]` with strict separators and token budgets.
+- [ ] Update `services/ai.ts` helpers to accept structured context payloads (system prompt + ordered user blocks) and to normalize JSON/markdown cleanup for the new prompt outputs (placeholders, summaries, validator notes).
+- [ ] Ensure English-enforcement preamble remains prepended in all new templates and streaming modes.
 
-## 3. UI Layout & Navigation
-- **Goal**: Create a clean, functional application layout.
-- **Components**:
-  - `Sidebar`: Navigation links (Write, Story Outline, Characters, Settings).
-  - `MainLayout`: Wrapper for the router view.
-  - `App.vue`: Setup basic layout structure using DaisyUI drawer or grid.
+## Phase 3: Orchestration Logic (The Loop)
+- [ ] Story Bible stage: When generating from a premise in `ChapterList` (outline modal), run `STORY_BIBLE_EXTRACTOR` first, store into `storyBible`, optionally validate/normalize via `STORY_BIBLE_VALIDATOR`, and expose it in `BookBible` UI for edits.
+- [ ] Skeleton stage: Replace current one-pass outline generation with two-pass flow in `ChapterList`: Architect generates placeholders per chapter; Validator checks placeholders against Story Bible (theme/tone/arc) and writes `validatorNotes`; UI surfaces per-chapter status chips and allows re-run per item.
+- [ ] Drafting stage: In `EditorView`, before writing Chapter N, auto-generate/refresh `denseSummary` for Chapter N-1 via `CHAPTER_SUMMARIZER`; build the chapter system prompt with Story Bible + Prev Summary + Current Placeholder, then call `CHAPTER_WRITER_HIERARCHICAL`; persist `content`, `denseSummary`, and status transitions.
+- [ ] Rolling context manager: Add a small service/composable to cache summaries, enforce max token lengths, and signal when summaries or placeholders are stale; integrate with continuity/transition modals and beats generator so they consume the same structured context.
+- [ ] UI/UX wiring: Surface Story Bible sections in `BookBible.vue`, placeholder + validator states in `ChapterItem.vue`/`ChapterEditor.vue`, context freshness badges in `EditorView.vue`, and manual refresh actions for summaries/validator runs.
 
-## 4. Feature: Settings
-- **Goal**: Allow user to configure AI connection.
-- **UI**:
-  - Input field for OpenRouter API Key.
-  - Dropdown for Model Selection.
-  - Save settings to `localStorage` (or Electron store).
-
-## 5. Feature: Outlining (Story & Characters)
-- **Story Outline**:
-  - Kanban-style or List view of chapters/scenes.
-  - fields: Title, Synopsis, Notes.
-- **Character Outlines**:
-  - Card grid view.
-  - Fields: Name, Description, Personality, Goals.
-  - These outlines will be fed as "Context" to the AI.
-
-## 6. Feature: Editor & AI Integration
-- **Goal**: The core writing experience with AI assistance.
-- **Editor Component**:
-  - Implement TipTap editor.
-  - **Paragraph Selection**:
-    - Detect current paragraph under cursor.
-    - "Regenerate" button in a floating menu or sidebar.
-  - **Custom Selection**:
-    - Bubble menu allowing "Prompt" action on highlighted text.
-- **AI Service**:
-  - Function to send current text + instruction + context (Story/Characters) to OpenRouter.
-  - Return streaming or complete response.
-
-## 7. Feature: Diff & Review
-- **Goal**: Allow user to review AI changes safely.
-- **Workflow**:
-  1. User selects text -> Requests change (Regenerate/Prompt).
-  2. AI generates new text.
-  3. **Diff Modal/Inline View**:
-     - Use `diff` library to compute changes.
-     - Display deletions in Red, additions in Green.
-  4. **Actions**:
-     - `Accept`: Replace original text with new text.
-     - `Reject`: Discard new text.
-     - `Edit`: Manually tweak the result before accepting.
-
-## 8. Electron Specifics
-- **File System**:
-  - Implement Load/Save functionality to write the book data to local JSON/Markdown files.
+## Phase 4: Testing & Validation
+- [ ] Add unit tests (or lightweight integration scripts) for schema serialization/deserialization of new fields (Pinia store ⇄ IPC ⇄ SQLite) to prevent data loss.
+- [ ] Add prompt-builder tests for `useChapterContext` to confirm ordering/injection of Story Bible and summaries, and to guard against missing fields.
+- [ ] Create manual QA checklist: generate outline → story bible → skeleton → validator → chapter draft → summary refresh; verify drift/hallucination reduction and UI status transitions.

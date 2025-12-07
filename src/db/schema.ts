@@ -9,6 +9,7 @@ export const projects = sqliteTable('projects', {
   logline: text('logline').default(''),
   synopsis: text('synopsis').default(''),
   originalPremise: text('original_premise').default(''),
+  storyBible: text('story_bible').default('{}'),
   createdAt: integer('created_at', { mode: 'timestamp' }).default(sql`(strftime('%s', 'now'))`),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).default(sql`(strftime('%s', 'now'))`)
 })
@@ -22,7 +23,14 @@ export const chapters = sqliteTable('chapters', {
   order: integer('order').notNull(),
   content: text('content').default(''),
   characterIds: text('character_ids').default('[]'),
-  beats: text('beats').default('[]') // JSON array of StoryBeat objects
+  beats: text('beats').default('[]'), // JSON array of StoryBeat objects
+  placeholder: text('placeholder').default(''),
+  validatorNotes: text('validator_notes').default(''),
+  draftStatus: text('draft_status').default('draft'),
+  denseSummary: text('dense_summary').default(''),
+  contextSnapshot: text('context_snapshot').default(''),
+  contextTokens: integer('context_tokens').default(0),
+  lastPromptHash: text('last_prompt_hash').default('')
 })
 
 export const characters = sqliteTable('characters', {
