@@ -7,6 +7,7 @@ export interface StoryBeat {
   resolved: boolean
 }
 
+// Canonical Story Bible structure used across prompt builders and IPC persistence.
 export interface StoryBible {
   coreThemes: string
   characterTerminologies: string
@@ -16,6 +17,7 @@ export interface StoryBible {
   worldRules: string
 }
 
+// Canonical Chapter contract: kept in sync with DB schema and IPC.
 export interface StoryChapter {
   id: string
   title: string

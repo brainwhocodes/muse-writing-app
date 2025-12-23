@@ -297,7 +297,7 @@ const loadChapterContent = () => {
       ? (marked.parse(chapterContent, { async: false }) as string)
       : chapterContent
     htmlContent = cleanMixedContent(htmlContent)
-    editor.value.commands.setContent(htmlContent, { emitUpdate: true })
+    editor.value.commands.setContent(htmlContent, { emitUpdate: false })
     // Update page count after content loads
     updatePageCount()
   }

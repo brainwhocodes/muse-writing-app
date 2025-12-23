@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { generateText } from '../services/ai'
 import { AI_PROMPTS } from '../constants/prompts'
-import { Sparkles, User, PenTool, Book, Tag, RefreshCw, FileText } from 'lucide-vue-next'
+import { Sparkles, User, PenTool, Book, Tag, RefreshCw, FileText, Users, Globe, Anchor, TrendingUp } from 'lucide-vue-next'
 import RichTextEditor from './RichTextEditor.vue'
 import { marked } from 'marked'
 
@@ -11,8 +11,16 @@ const projectStore = useProjectStore()
 const isGeneratingLogline = ref(false)
 const isGeneratingSynopsis = ref(false)
 const showOriginalPremise = ref(false)
+const activeTab = ref('pillars')
 
 const hasChapters = computed(() => projectStore.storyOutline.length > 0)
+
+const tabs = [
+  { id: 'pillars', label: 'Core Pillars', icon: Anchor, color: 'text-primary' },
+  { id: 'narrative', label: 'Narrative Flow', icon: TrendingUp, color: 'text-secondary' },
+  { id: 'world', label: 'World Building', icon: Globe, color: 'text-accent' },
+  { id: 'cast', label: 'Cast & Terminology', icon: Users, color: 'text-info' },
+]
 
 function stripHtml(html: string) {
   const tmp = document.createElement("DIV")
@@ -234,38 +242,188 @@ Generate a compelling synopsis that captures the story arc based on these chapte
       </div>
     </div>
 
-    <!-- Story Bible -->
-    <div class="card bg-base-100 border border-base-200 shadow-sm">
-      <div class="card-body space-y-6">
-        <div class="flex items-center gap-3 opacity-60">
-          <Book class="w-5 h-5" />
-          <h3 class="font-bold uppercase tracking-widest text-sm">Story Bible</h3>
+    <!-- Story Bible (Master-Detail Layout) -->
+    <div class="card bg-base-100 border border-base-200 shadow-sm overflow-hidden">
+      <div class="flex flex-col md:flex-row min-h-[600px]">
+        
+        <!-- Sidebar -->
+        <div class="w-full md:w-64 bg-base-200/40 border-b md:border-b-0 md:border-r border-base-200 flex flex-row md:flex-col overflow-x-auto md:overflow-visible">
+          <div class="p-4 md:p-6 pb-2 md:pb-6">
+            <div class="flex items-center gap-3 opacity-60 mb-2 md:mb-6 hidden md:flex">
+              <Book class="w-5 h-5" />
+              <h3 class="font-bold uppercase tracking-widest text-sm">Story Bible</h3>
+            </div>
+          </div>
+
+          <div class="flex flex-row md:flex-col gap-1 px-2 md:px-4 pb-2 md:pb-4">
+            <button 
+              v-for="tab in tabs" 
+              :key="tab.id"
+              @click="activeTab = tab.id"
+              class="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all whitespace-nowrap md:whitespace-normal"
+              :class="activeTab === tab.id ? 'bg-white shadow-sm text-base-content' : 'text-base-content/60 hover:bg-base-200 hover:text-base-content'"
+            >
+              <component :is="tab.icon" class="w-4 h-4 shrink-0" :class="activeTab === tab.id ? tab.color : ''" />
+              {{ tab.label }}
+            </button>
+          </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label class="form-control">
-            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Core Themes</span>
-            <textarea v-model="projectStore.storyBible.coreThemes" class="textarea textarea-bordered min-h-[80px]" placeholder="Themes and motifs to stay anchored to"></textarea>
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Character Terminologies</span>
-            <textarea v-model="projectStore.storyBible.characterTerminologies" class="textarea textarea-bordered min-h-[80px]" placeholder="Canon names/aliases, relationship notes"></textarea>
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Tone Guidelines</span>
-            <textarea v-model="projectStore.storyBible.toneGuidelines" class="textarea textarea-bordered min-h-[80px]" placeholder="Voice, diction, pacing, mood constraints"></textarea>
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Narrative Arc</span>
-            <textarea v-model="projectStore.storyBible.narrativeArc" class="textarea textarea-bordered min-h-[80px]" placeholder="Beginning -> middle -> end spine"></textarea>
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">Motifs</span>
-            <textarea v-model="projectStore.storyBible.motifs" class="textarea textarea-bordered min-h-[80px]" placeholder="Recurring images/symbols/phrases"></textarea>
-          </label>
-          <label class="form-control">
-            <span class="label-text text-xs uppercase tracking-wide text-base-content/60">World Rules</span>
-            <textarea v-model="projectStore.storyBible.worldRules" class="textarea textarea-bordered min-h-[80px]" placeholder="Magic/tech/social rules to avoid contradictions"></textarea>
-          </label>
+
+        <!-- Content Area -->
+        <div class="flex-1 p-6 md:p-10 bg-white/50">
+          
+          <!-- Core Pillars -->
+          <div v-if="activeTab === 'pillars'" class="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div>
+              <div class="flex items-center gap-3 mb-6">
+                <div class="p-2 bg-primary/10 rounded-lg text-primary">
+                  <Anchor class="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 class="text-xl font-serif font-bold text-base-content">Core Pillars</h4>
+                  <p class="text-xs text-base-content/50 uppercase tracking-wider font-medium">Thematic Foundation</p>
+                </div>
+              </div>
+              
+              <div class="space-y-6">
+                <label class="form-control w-full flex flex-col">
+                  <div class="label">
+                    <span class="label-text font-bold">Core Themes</span>
+                  </div>
+                  <textarea 
+                    v-model="projectStore.storyBible.coreThemes" 
+                    class="textarea textarea-bordered min-h-[160px] text-base leading-relaxed focus:textarea-primary transition-all w-full" 
+                    placeholder="e.g. The cyclical nature of violence, Redemption requires sacrifice..."
+                  ></textarea>
+                  <div class="label">
+                    <span class="label-text-alt text-base-content/50">What is the central argument or question of your story?</span>
+                  </div>
+                </label>
+
+                <label class="form-control w-full flex flex-col">
+                  <div class="label">
+                    <span class="label-text font-bold">Motifs & Symbols</span>
+                  </div>
+                  <textarea 
+                    v-model="projectStore.storyBible.motifs" 
+                    class="textarea textarea-bordered min-h-[120px] text-base leading-relaxed focus:textarea-primary transition-all w-full" 
+                    placeholder="Recurring imagery (e.g. shattered mirrors, ravens, the color red)..."
+                  ></textarea>
+                  <div class="label">
+                    <span class="label-text-alt text-base-content/50">Recurring imagery, objects, or phrases.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Narrative Flow -->
+          <div v-if="activeTab === 'narrative'" class="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div>
+              <div class="flex items-center gap-3 mb-6">
+                <div class="p-2 bg-secondary/10 rounded-lg text-secondary">
+                  <TrendingUp class="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 class="text-xl font-serif font-bold text-base-content">Narrative Flow</h4>
+                  <p class="text-xs text-base-content/50 uppercase tracking-wider font-medium">Structure & Voice</p>
+                </div>
+              </div>
+
+              <div class="space-y-6">
+                <label class="form-control w-full flex flex-col">
+                  <div class="label">
+                    <span class="label-text font-bold">Narrative Arc</span>
+                  </div>
+                  <textarea 
+                    v-model="projectStore.storyBible.narrativeArc" 
+                    class="textarea textarea-bordered min-h-[200px] text-base leading-relaxed focus:textarea-secondary transition-all w-full" 
+                    placeholder="Beginning: Status Quo... &#10;Inciting Incident: ... &#10;Midpoint: ... &#10;Climax: ... &#10;Resolution: ..."
+                  ></textarea>
+                  <div class="label">
+                    <span class="label-text-alt text-base-content/50">The emotional or structural spine of the story.</span>
+                  </div>
+                </label>
+
+                <label class="form-control w-full flex flex-col">
+                  <div class="label">
+                    <span class="label-text font-bold">Tone Guidelines</span>
+                  </div>
+                  <textarea 
+                    v-model="projectStore.storyBible.toneGuidelines" 
+                    class="textarea textarea-bordered min-h-[100px] text-base leading-relaxed focus:textarea-secondary transition-all w-full" 
+                    placeholder="e.g. Dark, gritty, hopeful, fast-paced, contemplative..."
+                  ></textarea>
+                  <div class="label">
+                    <span class="label-text-alt text-base-content/50">Atmosphere, voice, and pacing constraints.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- World Building -->
+          <div v-if="activeTab === 'world'" class="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div>
+              <div class="flex items-center gap-3 mb-6">
+                <div class="p-2 bg-accent/10 rounded-lg text-accent">
+                  <Globe class="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 class="text-xl font-serif font-bold text-base-content">World Building</h4>
+                  <p class="text-xs text-base-content/50 uppercase tracking-wider font-medium">Setting & Rules</p>
+                </div>
+              </div>
+
+              <div class="h-full">
+                <label class="form-control w-full h-full flex flex-col">
+                  <div class="label">
+                    <span class="label-text font-bold">World Rules & Systems</span>
+                  </div>
+                  <textarea 
+                    v-model="projectStore.storyBible.worldRules" 
+                    class="textarea textarea-bordered min-h-[400px] text-base leading-relaxed focus:textarea-accent transition-all w-full" 
+                    placeholder="Define the laws of your world here to ensure consistency..."
+                  ></textarea>
+                  <div class="label">
+                    <span class="label-text-alt text-base-content/50">Magic systems, technology, geography, or societal rules.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cast & Terminology -->
+          <div v-if="activeTab === 'cast'" class="space-y-8 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div>
+              <div class="flex items-center gap-3 mb-6">
+                <div class="p-2 bg-info/10 rounded-lg text-info">
+                  <Users class="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 class="text-xl font-serif font-bold text-base-content">Cast & Terminology</h4>
+                  <p class="text-xs text-base-content/50 uppercase tracking-wider font-medium">Entities & Relationships</p>
+                </div>
+              </div>
+
+              <div class="h-full">
+                <label class="form-control w-full h-full flex flex-col">
+                  <div class="label">
+                    <span class="label-text font-bold">Character Terminologies & Relationships</span>
+                  </div>
+                  <textarea 
+                    v-model="projectStore.storyBible.characterTerminologies" 
+                    class="textarea textarea-bordered min-h-[400px] text-base leading-relaxed focus:textarea-info transition-all w-full" 
+                    placeholder="e.g. The Emperor (never 'King'), Sarah hates John, The Guild of Thieves..."
+                  ></textarea>
+                  <div class="label">
+                    <span class="label-text-alt text-base-content/50">Canonical names, titles, and relationship dynamics.</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

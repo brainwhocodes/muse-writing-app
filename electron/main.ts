@@ -102,7 +102,7 @@ app.on('activate', () => {
 app.whenReady().then(async () => {
   try {
     console.log('App ready, initializing DB...')
-    initDb()
+    await initDb()
     console.log('DB initialized.')
   } catch (e) {
     console.error('FATAL: Failed to initialize DB:', e)

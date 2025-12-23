@@ -8,12 +8,14 @@ import ChapterEditor from './ChapterEditor.vue'
 import { marked } from 'marked'
 import { stripHtml } from '../composables/useTextUtils'
 import { useChapterContext } from '../composables/useChapterContext'
+import { useRollingContext } from '../composables/useRollingContext'
 import { useGepa, GEPA_DIMENSIONS } from '../composables/useGepa'
 import { usePromptStore } from '../stores/prompts'
 
 const projectStore = useProjectStore()
 const promptStore = usePromptStore()
 const { buildChapterPrompt } = useChapterContext()
+const { updateContextMetadata } = useRollingContext()
 const { optimize: gepaOptimize, progress: gepaProgress } = useGepa()
 
 // ---------------------------------------------------------
@@ -205,7 +207,7 @@ async function generateOutline() {
     // Use improved prompts from store if available
     const systemPrompt = wantsFullGeneration 
       ? promptStore.getPrompt('STORY_ARCHITECT')
-      : promptStore.getPrompt('OUTLINE_GENERATOR')
+      : promptStore.getPrompt('CHAPTER_OUTLINER')
     const rawResult = await generateText(prompt, '', 'outline', systemPrompt)
     const result = cleanJsonResponse(rawResult)
     
@@ -271,7 +273,7 @@ async function generateOutline() {
       }
 
       // Validate placeholders against Story Bible (validator pass)
-      let validations: Array<{ id?: string; validatorNotes?: string; draftStatus?: string }> = []
+      let validations: Array<{ id?: string; validatorNotes?: string; draftStatus?: 'idea' | 'skeleton' | 'validated' | 'draft' | 'complete' }> = []
       try {
         if (placeholders.length) {
           const validatorPrompt = [
@@ -423,12 +425,12 @@ async function batchGenerateChapters() {
 
   for (let i = 0; i < chaptersToGenerate.length; i++) {
     const chapter = chaptersToGenerate[i]
-    const chapterPrompt = buildChapterPrompt(chapter)
-    let chapterHtml = ''
+      const chapterPrompt = buildChapterPrompt(chapter)
+      let chapterHtml = ''
 
-    if (useGEPA.value) {
-      batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Drafting...`
-      gepaStage.value = 'draft'
+      if (useGEPA.value) {
+        batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Drafting...`
+        gepaStage.value = 'draft'
       const draft = await generateText(chapterPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_WRITER_HIERARCHICAL'))
       
       batchProgress.value = `[${i + 1}/${chaptersToGenerate.length}] ${chapter.title} — Reflecting...`
@@ -474,6 +476,7 @@ async function batchGenerateChapters() {
           console.warn('Dense summary generation failed', err)
         }
         projectStore.updateChapter(chapter.id, updatePayload)
+        updateContextMetadata(chapter.id)
       }
     }
 
@@ -531,6 +534,24 @@ async function generateChapterDraft(chapterId: string) {
   gepaStage.value = null
   
   try {
+    // Ensure previous chapter has a dense summary for rolling context
+    const idx = projectStore.storyOutline.findIndex(c => c.id === chapterId)
+    const prev = idx > 0 ? projectStore.storyOutline[idx - 1] : null
+    if (prev && !prev.denseSummary && prev.content) {
+      try {
+        const prevSummaryPrompt = `Chapter Title: ${prev.title}\n\nFull Chapter:\n${stripHtml(prev.content)}`
+        const prevSummaryRaw = await generateText(prevSummaryPrompt, '', 'outline', promptStore.getPrompt('CHAPTER_SUMMARIZER'))
+        const prevClean = cleanJsonResponse(prevSummaryRaw)
+        const prevMatch = prevClean.match(/\{[\s\S]*\}/s)
+        const prevObj = prevMatch ? parseJsonSafe(prevMatch[0], {}) as any : {}
+        if (prevObj?.denseSummary) {
+          projectStore.updateChapter(prev.id, { denseSummary: prevObj.denseSummary })
+        }
+      } catch (err) {
+        console.warn('Previous chapter summary generation failed', err)
+      }
+    }
+
     const chapterPrompt = buildChapterPrompt(chapter)
     let result: string
     
@@ -556,6 +577,7 @@ async function generateChapterDraft(chapterId: string) {
         console.warn('Dense summary generation failed', err)
       }
       projectStore.updateChapter(chapter.id, updatePayload)
+      updateContextMetadata(chapter.id)
     }
   } catch (e) {
     console.error(e)

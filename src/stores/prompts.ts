@@ -146,7 +146,7 @@ export const usePromptStore = defineStore('prompts', () => {
   const optimizablePrompts = computed(() => [
     { key: 'CHAPTER_WRITER' as const, name: 'Chapter Writer', description: 'Generates full chapter text' },
     { key: 'STORY_ARCHITECT' as const, name: 'Story Architect', description: 'Creates story outlines with characters and terms' },
-    { key: 'OUTLINE_GENERATOR' as const, name: 'Outline Generator', description: 'Creates chapter outlines only' },
+    { key: 'CHAPTER_OUTLINER' as const, name: 'Chapter Outliner', description: 'Creates chapter outlines with causality and structure' },
     { key: 'STORY_BIBLE_EXTRACTOR' as const, name: 'Story Bible Extractor', description: 'Extracts global canon from premise/outline' },
     { key: 'STORY_BIBLE_VALIDATOR' as const, name: 'Story Bible Validator', description: 'Checks Story Bible consistency' },
     { key: 'ARCHITECT_PLACEHOLDER' as const, name: 'Placeholder Architect', description: 'Generates chapter placeholders only' },

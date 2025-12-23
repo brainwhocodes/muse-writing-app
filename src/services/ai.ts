@@ -10,20 +10,36 @@ CRITICAL LANGUAGE REQUIREMENT: You MUST write ONLY in English.
 `
 
 /**
+ * Utility: join ordered user blocks for clarity and stable formatting
+ */
+export function buildUserPrompt(blocks: Array<string | undefined | null>): string {
+  return blocks.filter(Boolean).join('\n\n---\n\n')
+}
+
+/**
+ * Utility: strip code fences/markdown wrappers and trim
+ */
+export function cleanModelResponse(text: string): string {
+  return text.replace(/```json\s*/gi, '')
+    .replace(/```/g, '')
+    .trim()
+}
+
+/**
  * Detects if text contains significant non-English characters
  * Returns true if non-English content is detected
  */
 function containsNonEnglish(text: string): boolean {
   console.log('Checking for non-English:', text)
   // Match CJK characters, Cyrillic, Arabic, Thai, etc.
-  const nonLatinPattern = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7af]/
+  const nonLatinPattern = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\uac00-\ud7af]/g
   const matches = text.match(nonLatinPattern)
   // Allow small amounts (might be in names/terms) but flag if substantial
-  return matches !== null && matches.length > 5
+  return (matches?.length || 0) > 5
 }
 
 export async function generateText(
-  prompt: string, 
+  prompt: string | string[], 
   selectedText: string, 
   contextMode: 'paragraph' | 'selection' | 'outline' = 'selection',
   customSystemPrompt?: string,
@@ -66,13 +82,14 @@ export async function generateText(
   systemPrompt = ENGLISH_ENFORCEMENT + '\n\n' + systemPrompt
 
   let userMessage = ''
+  const promptPayload = Array.isArray(prompt) ? buildUserPrompt(prompt) : prompt
   
   if (contextMode === 'paragraph') {
-    userMessage = `Regenerate the following paragraph based on this instruction: "${prompt}"\n\nPARAGRAPH:\n${selectedText}`
+    userMessage = `Regenerate the following paragraph based on this instruction: "${promptPayload}"\n\nPARAGRAPH:\n${selectedText}`
   } else if (contextMode === 'selection') {
-    userMessage = `Edit or continue the following text based on this instruction: "${prompt}"\n\nTEXT:\n${selectedText}`
+    userMessage = `Edit or continue the following text based on this instruction: "${promptPayload}"\n\nTEXT:\n${selectedText}`
   } else if (contextMode === 'outline') {
-    userMessage = prompt
+    userMessage = promptPayload
   }
 
   let lastResult = ''
@@ -115,7 +132,7 @@ export async function generateText(
 }
 
 export async function* streamText(
-  prompt: string, 
+  prompt: string | string[], 
   contextMode: 'outline' | 'general',
   customSystemPrompt?: string
 ): AsyncGenerator<string> {
@@ -138,11 +155,13 @@ export async function* streamText(
   const basePrompt = customSystemPrompt || `You are a creative writing assistant. Context: ${characterContext}`
   const systemPrompt = ENGLISH_ENFORCEMENT + '\n\n' + basePrompt
 
+  const promptPayload = Array.isArray(prompt) ? buildUserPrompt(prompt) : prompt
+
   const stream = await client.chat.completions.create({
     model: settings.selectedModel,
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt }
+      { role: 'user', content: promptPayload }
     ],
     stream: true
   })

@@ -92,14 +92,14 @@ CREATE TABLE IF NOT EXISTS improved_prompts (
 );
 `
 
-export function initDb() {
+export async function initDb() {
   const userDataPath = app.getPath('userData')
   
   // In development, use a local file in the project root so we can inspect it easier
   // process.env.VITE_DEV_SERVER_URL is set by electron-vite in dev mode
   const isDev = !!process.env.VITE_DEV_SERVER_URL
   
-  const dbPath = !isDev 
+  const dbPath = isDev 
     ? path.join(process.cwd(), 'dev.db')
     : path.join(userDataPath, 'writing-app.db')
   
@@ -111,38 +111,39 @@ export function initDb() {
 
   db = drizzle(client, { schema })
 
-  // Run migrations / init tables
-  client.executeMultiple(CREATE_TABLES_SQL)
-    .then(async () => {
-      // Schema migrations for existing databases
-      const migrations = [
-        "ALTER TABLE chapters ADD COLUMN content TEXT DEFAULT ''",
-        "ALTER TABLE chapters ADD COLUMN beats TEXT DEFAULT '[]'",
-        "ALTER TABLE chapters ADD COLUMN placeholder TEXT DEFAULT ''",
-        "ALTER TABLE chapters ADD COLUMN validator_notes TEXT DEFAULT ''",
-        "ALTER TABLE chapters ADD COLUMN draft_status TEXT DEFAULT 'draft'",
-        "ALTER TABLE chapters ADD COLUMN dense_summary TEXT DEFAULT ''",
-        "ALTER TABLE chapters ADD COLUMN context_snapshot TEXT DEFAULT ''",
-        "ALTER TABLE chapters ADD COLUMN context_tokens INTEGER DEFAULT 0",
-        "ALTER TABLE chapters ADD COLUMN last_prompt_hash TEXT DEFAULT ''",
-        "ALTER TABLE characters ADD COLUMN is_pov INTEGER DEFAULT 0",
-        "ALTER TABLE characters ADD COLUMN voice_diction TEXT DEFAULT ''",
-        "ALTER TABLE characters ADD COLUMN voice_forbidden TEXT DEFAULT ''",
-        "ALTER TABLE characters ADD COLUMN voice_metaphors TEXT DEFAULT ''",
-        "ALTER TABLE terminology ADD COLUMN category TEXT DEFAULT 'other'",
-        "ALTER TABLE terminology ADD COLUMN aliases TEXT DEFAULT ''",
-        "ALTER TABLE projects ADD COLUMN original_premise TEXT DEFAULT ''",
-        "ALTER TABLE projects ADD COLUMN story_bible TEXT DEFAULT '{}'"
-      ]
-      for (const sql of migrations) {
-        await client.execute(sql).catch(() => {
-          // Column likely already exists, ignore error
-        })
-      }
-    })
-    .catch(err => {
-      console.error('Failed to initialize DB tables:', err)
-    })
+  try {
+    // Run migrations / init tables
+    await client.executeMultiple(CREATE_TABLES_SQL)
+
+    // Schema migrations for existing databases
+    const migrations = [
+      "ALTER TABLE chapters ADD COLUMN content TEXT DEFAULT ''",
+      "ALTER TABLE chapters ADD COLUMN beats TEXT DEFAULT '[]'",
+      "ALTER TABLE chapters ADD COLUMN placeholder TEXT DEFAULT ''",
+      "ALTER TABLE chapters ADD COLUMN validator_notes TEXT DEFAULT ''",
+      "ALTER TABLE chapters ADD COLUMN draft_status TEXT DEFAULT 'draft'",
+      "ALTER TABLE chapters ADD COLUMN dense_summary TEXT DEFAULT ''",
+      "ALTER TABLE chapters ADD COLUMN context_snapshot TEXT DEFAULT ''",
+      "ALTER TABLE chapters ADD COLUMN context_tokens INTEGER DEFAULT 0",
+      "ALTER TABLE chapters ADD COLUMN last_prompt_hash TEXT DEFAULT ''",
+      "ALTER TABLE characters ADD COLUMN is_pov INTEGER DEFAULT 0",
+      "ALTER TABLE characters ADD COLUMN voice_diction TEXT DEFAULT ''",
+      "ALTER TABLE characters ADD COLUMN voice_forbidden TEXT DEFAULT ''",
+      "ALTER TABLE characters ADD COLUMN voice_metaphors TEXT DEFAULT ''",
+      "ALTER TABLE terminology ADD COLUMN category TEXT DEFAULT 'other'",
+      "ALTER TABLE terminology ADD COLUMN aliases TEXT DEFAULT ''",
+      "ALTER TABLE projects ADD COLUMN original_premise TEXT DEFAULT ''",
+      "ALTER TABLE projects ADD COLUMN story_bible TEXT DEFAULT '{}'"
+    ]
+    for (const sql of migrations) {
+      await client.execute(sql).catch(() => {
+        // Column likely already exists, ignore error
+      })
+    }
+  } catch (err) {
+    console.error('Failed to initialize DB tables:', err)
+    throw err
+  }
 
   setupHandlers()
 }
@@ -318,7 +319,7 @@ function setupHandlers() {
             term: t.term,
             definition: t.definition,
             notes: t.notes,
-            chapters: JSON.parse(t.chapterIds || '[]'),
+            chapters: parseJsonSafe<string[]>(t.chapterIds, []),
             category: t.category || 'other',
             aliases: t.aliases || ''
         }))
