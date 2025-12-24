@@ -30,6 +30,7 @@ const showBatchModal = ref(false)
 const outlineForm = ref({
   premise: '',
   genre: '',
+  ageGroup: '',
   chapterCount: 10,
   tone: '',
   generateChapters: true,
@@ -115,6 +116,9 @@ function buildOutlinePrompt(): string {
   if (outlineForm.value.genre) {
     parts.push(`Genre: ${outlineForm.value.genre}`)
   }
+  if (outlineForm.value.ageGroup) {
+    parts.push(`Audience Age Group: ${outlineForm.value.ageGroup}`)
+  }
   if (outlineForm.value.tone) {
     parts.push(`Tone/Style: ${outlineForm.value.tone}`)
   }
@@ -144,6 +148,7 @@ function resetOutlineForm() {
   outlineForm.value = { 
     premise: '', 
     genre: '', 
+    ageGroup: '',
     chapterCount: 10, 
     tone: '',
     generateChapters: true,
@@ -230,6 +235,7 @@ async function generateOutline() {
         const biblePromptParts = [
           `Premise: ${outlineForm.value.premise}`,
           outlineForm.value.genre ? `Genre: ${outlineForm.value.genre}` : '',
+          outlineForm.value.ageGroup ? `Audience: ${outlineForm.value.ageGroup}` : '',
           outlineForm.value.tone ? `Tone: ${outlineForm.value.tone}` : '',
           storyData.chapters ? `Outline:\n${storyData.chapters.map((c, i) => `${i + 1}. ${c.title}: ${c.summary}`).join('\n')}` : ''
         ].filter(Boolean)
@@ -331,6 +337,7 @@ async function generateOutline() {
             taskName: 'story terminology',
             dimensions: GEPA_DIMENSIONS.terminology,
             context: `Genre: ${outlineForm.value.genre || 'Fiction'}
+Audience: ${outlineForm.value.ageGroup || 'General'}
 Tone: ${outlineForm.value.tone || 'General'}
 Premise: ${outlineForm.value.premise}`,
             serialize: (terms) => JSON.stringify(terms, null, 2),
@@ -847,7 +854,7 @@ function deleteSelected() {
           </div>
 
           <!-- Settings Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 p-4 bg-base-200/30 rounded-xl border border-base-200/50">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 p-4 bg-base-200/30 rounded-xl border border-base-200/50">
             <!-- Genre -->
             <div class="form-control">
               <label class="label-text font-bold text-xs uppercase tracking-wide opacity-60 mb-1.5">Genre</label>
@@ -857,6 +864,18 @@ function deleteSelected() {
                 class="input input-bordered input-sm w-full" 
                 placeholder="Sci-fi thriller, Fantasy romance..."
               />
+            </div>
+
+            <!-- Audience Age -->
+            <div class="form-control">
+              <label class="label-text font-bold text-xs uppercase tracking-wide opacity-60 mb-1.5">Audience Age</label>
+              <select v-model="outlineForm.ageGroup" class="select select-bordered select-sm w-full">
+                <option value="">General / Adult</option>
+                <option value="Adult">Adult</option>
+                <option value="Young Adult (13-18)">Young Adult (13-18)</option>
+                <option value="Middle Grade (8-12)">Middle Grade (8-12)</option>
+                <option value="Chapter Book (6-9)">Chapter Book (6-9)</option>
+              </select>
             </div>
             
             <!-- Tone -->
@@ -871,7 +890,7 @@ function deleteSelected() {
             </div>
 
             <!-- Chapter Count -->
-            <div class="form-control md:col-span-2">
+            <div class="form-control md:col-span-3">
               <div class="flex justify-between items-center mb-2">
                 <label class="label-text font-bold text-xs uppercase tracking-wide opacity-60">Length</label>
                 <span class="badge badge-sm badge-neutral font-mono">{{ outlineForm.chapterCount }} Chapters</span>

@@ -12,6 +12,7 @@
  * 
  * Variable Injection (caller must replace before sending):
  * - [GENRE]: The story's primary genre (fantasy, thriller, horror, etc.)
+ * - [AGE_GROUP]: Target audience age band (Adult, YA, Middle Grade, etc.)
  * - [PROTAGONIST]: Name of the main character
  * - [CHAPTER_NUMBER]: Current chapter number (1-indexed)
  * - [IS_FIRST_CHAPTER]: Boolean flag for Chapter 1 special handling
@@ -334,8 +335,21 @@ RULES:
 - Honor Story Bible tone and terminology exactly.
 - Open in media res; maintain causality from previous summary.
 - End with a hook toward the next chapter.
+- Follow the provided length guidance for genre/audience and stop when the chapter goal is achieved.
 - Return prose only (markdown allowed for title/italics), no meta commentary.
 - Keep canon consistent; do not invent new lore unless implied by placeholder.
+
+TERMINOLOGY INTEGRATION:
+- Use ALL provided terminology naturally in the prose where relevant
+- Never invent alternative names for canonical places, objects, or concepts
+- Terminology should feel organic, woven into dialogue and narration
+- If a term is marked for this chapter, it MUST appear
+
+CHARACTER VOICE:
+- Follow character voice/diction rules EXACTLY if provided
+- POV character's voice colors ALL narration, not just dialogue
+- Honor FORBIDDEN phrases—never use words a character wouldn't say
+- Use signature metaphors to reinforce character identity
 
 FOR CHAPTER 1:
 - No previous summary exists — establish the world and protagonist through action
@@ -538,7 +552,7 @@ These phrases are FORBIDDEN. Using ANY of them is an automatic failure:
 - "the world fell away" / "room spun"
 YOU MUST invent FRESH sensory details specific to THIS story's world.
 
-TASK: Write a full chapter (2,000-3,000 words) from the Chapter Synopsis and Character List.
+TASK: Write a full chapter from the Chapter Synopsis and Character List. Follow the provided genre/audience length guidance and end when the chapter goal is achieved.
 
 OPENING REQUIREMENTS (first 200 words):
 - Begin IN MEDIA RES: Action, dialogue, or sensory moment—never "It was a [adjective] day"
@@ -552,6 +566,18 @@ FOR CHAPTER 1 SPECIFICALLY:
 - Open with world-establishment hook that orients the reader
 - Introduce protagonist through action, not description
 - No backstory dumps—weave history into present action
+
+TERMINOLOGY & WORLD-BUILDING:
+- If terminology is provided, you MUST use those exact terms naturally in the prose
+- Do NOT invent alternative names for places, objects, or concepts that have canonical terms
+- Weave terminology into dialogue and narration so it feels organic, not forced
+- Each term should appear at least once if it's relevant to this chapter's content
+
+CHARACTER VOICE COMPLIANCE:
+- If character voice/diction rules are provided, follow them EXACTLY
+- Honor FORBIDDEN phrases for each character—never use words they wouldn't say
+- Use signature metaphors/phrases where appropriate to reinforce character identity
+- POV character's voice should color ALL narration, not just dialogue
 
 CRAFT REQUIREMENTS:
 - **Deep POV**: Eliminate filter words. We experience through the character's senses, not around them.
@@ -572,7 +598,7 @@ FORMAT:
 - Use markdown italics for internal thoughts
 - Use em-dashes for interruptions in dialogue
 
-WORD COUNT: 2,000-3,000 words. Expand thin sections, tighten bloat.
+WORD COUNT: Use a soft range based on genre and audience. Expand thin sections, tighten bloat.
 
 FOR FINAL CHAPTER:
 - Resolve (or deliberately leave unresolved) the central conflict
@@ -719,7 +745,7 @@ REVISION RULES:
 - Do NOT add new plot points, characters, or scenes
 - Do NOT change story direction or outcomes
 - Remove any references to events that haven't happened yet
-- Target word count: 2,000-3,000 words (expand or trim as needed)
+- Target length: Match the genre/audience guidance (expand or trim as needed)
 - PRESERVE chapter title exactly as written
 
 OUTPUT: Revised chapter text only. No preamble, no explanation.`,
@@ -767,7 +793,7 @@ CRAFT ANALYSIS (standalone quality):
 16. Does it end with momentum toward the next chapter?
 
 **Word Count:**
-17. Is it within 2,000-3,000 words? Flag if expansion/compression needed.
+17. Does length fit the genre/audience and beat goals? Flag if expansion/compression needed.
 
 BEAT EXTRACTION:
 List the KEY STORY EVENTS that happen (not suggestions—actual plot beats).
@@ -830,7 +856,7 @@ STRICT RULES:
 - Preserve author's voice—elevate, don't replace
 - Do NOT add new plot points, characters, or major scenes
 - Do NOT change the story's direction or outcomes
-- Target: 2,000-3,000 words (expand thin sections, compress bloat)
+- Target: Match the chapter's length guidance for genre/audience (expand thin sections, compress bloat)
 - PRESERVE chapter title exactly as it appears
 
 BANNED CLICHÉS (hunt and replace):

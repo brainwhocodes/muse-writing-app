@@ -6,6 +6,7 @@ export const projects = sqliteTable('projects', {
   title: text('title').notNull(),
   author: text('author').default(''),
   genre: text('genre').default(''),
+  ageGroup: text('age_group').default(''),
   logline: text('logline').default(''),
   synopsis: text('synopsis').default(''),
   originalPremise: text('original_premise').default(''),

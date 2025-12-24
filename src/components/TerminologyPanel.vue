@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useProjectStore, type StoryTerm } from '../stores/project'
-import { Tag, BookOpenCheck, Trash2, Pencil, Plus, Search, Copy, MapPin, Box, Lightbulb, Users, Calendar, HelpCircle, FileText, Sparkles, RefreshCw, Wand2 } from 'lucide-vue-next'
+import { Tag, BookOpenCheck, Trash2, Pencil, Plus, Search, Copy, MapPin, Box, Lightbulb, Users, Calendar, HelpCircle, FileText, Sparkles, RefreshCw, Wand2, FileSearch } from 'lucide-vue-next'
 import { stripHtml } from '../composables/useTextUtils'
 import { useGepa, GEPA_DIMENSIONS } from '../composables/useGepa'
 import { generateText } from '../services/ai'
+import { useChapterContext } from '../composables/useChapterContext'
 
 const projectStore = useProjectStore()
 const { optimize: gepaOptimize, progress: gepaProgress } = useGepa()
+const { extractFromChapter } = useChapterContext()
 
 const editingId = ref<string | null>(null)
 const isRegenerating = ref(false)
@@ -162,6 +164,7 @@ function getStoryContext(): string {
   const chapterSummaries = chapters.slice(0, 5).map(c => `- ${c.title}: ${c.summary || 'No summary'}`).join('\n')
   return `BOOK: ${meta.title || 'Untitled'}
 GENRE: ${meta.genre || 'Fiction'}
+AUDIENCE: ${meta.ageGroup || 'General'}
 LOGLINE: ${meta.logline || 'No logline'}
 PREMISE: ${meta.synopsis || 'No synopsis provided'}
 
@@ -395,6 +398,61 @@ async function improveSingleTerm(term: StoryTerm) {
     isRegenerating.value = false
   }
 }
+
+/**
+ * Extract terminology from all written chapters
+ */
+async function extractFromChapters() {
+  const chaptersWithContent = projectStore.storyOutline.filter(c => c.content && c.content.length > 100)
+  if (chaptersWithContent.length === 0) {
+    alert('No chapters with content to extract from. Write some chapters first!')
+    return
+  }
+  isRegenerating.value = true
+  regenerateStatus.value = 'Extracting terms from chapters...'
+  try {
+    let allSuggestedTerms: Array<{ term: string; definition: string; category: string }> = []
+    for (let i = 0; i < Math.min(chaptersWithContent.length, 5); i++) {
+      const chapter = chaptersWithContent[i]
+      regenerateStatus.value = `Scanning ${chapter.title}...`
+      const result = await extractFromChapter(chapter.id)
+      allSuggestedTerms = [...allSuggestedTerms, ...result.suggestedTerms]
+    }
+    const existingTermNames = new Set(projectStore.terminology.map(t => t.term.toLowerCase()))
+    const uniqueNewTerms = allSuggestedTerms.filter(t => !existingTermNames.has(t.term.toLowerCase()))
+    const deduped = uniqueNewTerms.reduce((acc, t) => {
+      if (!acc.find(x => x.term.toLowerCase() === t.term.toLowerCase())) {
+        acc.push(t)
+      }
+      return acc
+    }, [] as typeof uniqueNewTerms)
+    if (deduped.length === 0) {
+      regenerateStatus.value = 'No new terms found in chapters.'
+      setTimeout(() => { regenerateStatus.value = '' }, 3000)
+      return
+    }
+    let addedCount = 0
+    deduped.forEach(t => {
+      projectStore.addTerm({
+        term: t.term,
+        definition: t.definition,
+        notes: 'Extracted from chapter content',
+        chapters: [],
+        category: (t.category as 'place' | 'object' | 'concept' | 'event' | 'other') || 'other',
+        aliases: ''
+      })
+      addedCount++
+    })
+    regenerateStatus.value = `Extracted ${addedCount} new terms from chapters!`
+    setTimeout(() => { regenerateStatus.value = '' }, 3000)
+  } catch (err) {
+    console.error('Chapter extraction failed:', err)
+    regenerateStatus.value = 'Extraction failed'
+    setTimeout(() => { regenerateStatus.value = '' }, 3000)
+  } finally {
+    isRegenerating.value = false
+  }
+}
 </script>
 
 <template>
@@ -444,6 +502,15 @@ async function improveSingleTerm(term: StoryTerm) {
                 </div>
               </button>
             </li>
+            <li v-if="projectStore.storyOutline.some(c => c.content)">
+              <button @click="extractFromChapters()" :disabled="isRegenerating" class="flex gap-3">
+                <FileSearch class="w-4 h-4 text-accent" />
+                <div class="text-left">
+                  <div class="font-medium">Extract from Chapters</div>
+                  <div class="text-xs opacity-60">Find terms in written content</div>
+                </div>
+              </button>
+            </li>
           </ul>
         </div>
         <button @click="startAdd()" class="btn btn-primary btn-sm gap-2 shadow-lg shadow-primary/20">
@@ -484,7 +551,7 @@ async function improveSingleTerm(term: StoryTerm) {
     <!-- Editor Form (collapsible) -->
     <div v-if="showForm" class="card bg-base-100 border border-base-200 shadow-xl overflow-hidden">
       <!-- Header -->
-      <div class="bg-gradient-to-r from-primary/10 via-base-100 to-base-100 p-5 border-b border-base-200">
+      <div class="bg-linear-to-r from-primary/10 via-base-100 to-base-100 p-5 border-b border-base-200">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="p-2 rounded-lg bg-primary/10 text-primary">

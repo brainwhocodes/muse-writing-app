@@ -670,6 +670,7 @@ async function generateTransition() {
     const prompt = `STORY CONTEXT:
 Book: ${projectStore.bookMetadata.title}
 Genre: ${projectStore.bookMetadata.genre}
+Audience Age Group: ${projectStore.bookMetadata.ageGroup || 'General'}
 ${characterDetails ? `Characters:\n${characterDetails}` : ''}
 
 PREVIOUS CHAPTER ("${prevChapter.title}") ENDING:

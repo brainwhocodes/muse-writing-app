@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, toRaw } from 'vue'
 
 export interface StoryBeat {
   id: string
@@ -52,10 +52,10 @@ export interface BookMetadata {
   title: string
   author: string
   genre: string
+  ageGroup: string
   logline: string
   synopsis: string
   originalPremise?: string // The prompt used to generate the outline
-  storyBible?: StoryBible
 }
 
 export interface StoryTerm {
@@ -73,6 +73,49 @@ export interface ProjectListItem {
   title: string
   author: string
   updatedAt: Date | null
+}
+
+function sanitizeForClone<T>(value: T): T {
+  const seen = new WeakSet<object>()
+  const isWindowLike = (val: unknown): boolean => {
+    if (typeof window === 'undefined') return false
+    const win = val as Window | undefined
+    return !!win && (win === window || win.window === win)
+  }
+  const visit = (input: unknown): unknown => {
+    if (input === null) return null
+    const type = typeof input
+    if (type === 'string' || type === 'number' || type === 'boolean') return input
+    if (type === 'undefined') return undefined
+    if (type === 'bigint') return Number(input)
+    if (type === 'function' || type === 'symbol') return undefined
+    if (type !== 'object') return input
+    if (isWindowLike(input) || (typeof document !== 'undefined' && input === document)) return undefined
+    if (typeof Node !== 'undefined' && input instanceof Node) return undefined
+    if (input instanceof Date) return new Date(input.getTime())
+    if (input instanceof RegExp) return new RegExp(input)
+    if (seen.has(input as object)) return undefined
+    seen.add(input as object)
+    if (Array.isArray(input)) {
+      return input.map(visit).filter((item) => item !== undefined)
+    }
+    const output: Record<string, unknown> = {}
+    for (const [key, val] of Object.entries(input as Record<string, unknown>)) {
+      const next = visit(val)
+      if (next !== undefined) output[key] = next
+    }
+    return output
+  }
+  return visit(value) as T
+}
+
+function safeClone<T>(value: T): T {
+  try {
+    return structuredClone(value)
+  } catch (err) {
+    console.warn('structuredClone failed, sanitizing value before save:', err)
+    return sanitizeForClone(value)
+  }
 }
 
 export const useProjectStore = defineStore('project', () => {
@@ -96,16 +139,9 @@ export const useProjectStore = defineStore('project', () => {
     title: 'My New Novel',
     author: '',
     genre: '',
+    ageGroup: '',
     logline: '',
-    synopsis: '',
-    storyBible: {
-      coreThemes: '',
-      characterTerminologies: '',
-      toneGuidelines: '',
-      narrativeArc: '',
-      motifs: '',
-      worldRules: ''
-    }
+    synopsis: ''
   })
   
   const storyOutline = ref<StoryChapter[]>([])
@@ -147,19 +183,24 @@ export const useProjectStore = defineStore('project', () => {
     loadError.value = null
     console.log('Saving project...')
     try {
+      // Use structuredClone with toRaw to preserve types and avoid Vue reactivity issues
+      const projectData = safeClone(toRaw({ ...bookMetadata.value, storyBible: storyBible.value }))
+      const chaptersData = safeClone(toRaw(storyOutline.value))
+      const charactersData = safeClone(toRaw(characterOutline.value))
+      const termsData = safeClone(toRaw(terminology.value))
       await window.ipcRenderer.invoke('db-save-project', {
-        project: JSON.parse(JSON.stringify({ ...bookMetadata.value, storyBible: storyBible.value })),
-        chapters: JSON.parse(JSON.stringify(storyOutline.value)),
-        characters: JSON.parse(JSON.stringify(characterOutline.value)),
-        terms: JSON.parse(JSON.stringify(terminology.value))
+        project: projectData,
+        chapters: chaptersData,
+        characters: charactersData,
+        terms: termsData
       })
       console.log('Project saved!')
       lastSavedAt.value = new Date().toISOString()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to save project:', err)
-      // Show alert for debugging
-      alert(`Failed to save project: ${err.message || err}`)
-      loadError.value = err?.message || 'Save failed'
+      const message = err instanceof Error ? err.message : 'Save failed'
+      alert(`Failed to save project: ${message}`)
+      loadError.value = message
     } finally {
       isSaving.value = false
     }
@@ -172,7 +213,26 @@ export const useProjectStore = defineStore('project', () => {
     try {
       const data = await window.ipcRenderer.invoke('db-load-project', idToLoad)
       if (data) {
-        bookMetadata.value = data.project
+        // Extract storyBible from project data and set separately (single source of truth)
+        const { storyBible: loadedBible, ...metadataWithoutBible } = data.project || {}
+        bookMetadata.value = {
+          id: metadataWithoutBible.id || '',
+          title: metadataWithoutBible.title || 'My New Novel',
+          author: metadataWithoutBible.author || '',
+          genre: metadataWithoutBible.genre || '',
+          ageGroup: metadataWithoutBible.ageGroup || '',
+          logline: metadataWithoutBible.logline || '',
+          synopsis: metadataWithoutBible.synopsis || '',
+          originalPremise: metadataWithoutBible.originalPremise || ''
+        }
+        storyBible.value = loadedBible || {
+          coreThemes: '',
+          characterTerminologies: '',
+          toneGuidelines: '',
+          narrativeArc: '',
+          motifs: '',
+          worldRules: ''
+        }
         storyOutline.value = (data.chapters || []).map((c: StoryChapter) => ({
           placeholder: '',
           validatorNotes: '',
@@ -183,25 +243,16 @@ export const useProjectStore = defineStore('project', () => {
           lastPromptHash: '',
           ...c
         }))
-        characterOutline.value = data.characters
+        characterOutline.value = data.characters || []
         terminology.value = data.terms || []
-        storyBible.value = data.project?.storyBible || {
-          coreThemes: '',
-          characterTerminologies: '',
-          toneGuidelines: '',
-          narrativeArc: '',
-          motifs: '',
-          worldRules: ''
-        }
-        currentProjectId.value = data.project.id
+        currentProjectId.value = data.project?.id || idToLoad
         lastSavedAt.value = new Date().toISOString()
       } else {
-        // No project found, create a new one
         newProject('Untitled Project')
       }
     } catch (err) {
       console.error('Failed to load project:', err)
-      loadError.value = (err as any)?.message || 'Load failed'
+      loadError.value = err instanceof Error ? err.message : 'Load failed'
     }
   }
 
@@ -305,6 +356,7 @@ export const useProjectStore = defineStore('project', () => {
       title: name || 'Untitled Project',
       author: '',
       genre: '',
+      ageGroup: '',
       logline: '',
       synopsis: ''
     }

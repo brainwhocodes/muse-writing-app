@@ -22,6 +22,14 @@ const tabs = [
   { id: 'cast', label: 'Cast & Terminology', icon: Users, color: 'text-info' },
 ]
 
+const ageGroups = [
+  { value: '', label: 'Audience' },
+  { value: 'Adult', label: 'Adult' },
+  { value: 'Young Adult (13-18)', label: 'Young Adult (13-18)' },
+  { value: 'Middle Grade (8-12)', label: 'Middle Grade (8-12)' },
+  { value: 'Chapter Book (6-9)', label: 'Chapter Book (6-9)' }
+]
+
 function stripHtml(html: string) {
   const tmp = document.createElement("DIV")
   tmp.innerHTML = html
@@ -42,6 +50,7 @@ async function refineLogline() {
     BOOK DETAILS:
     Title: ${metadata.title}
     Genre: ${metadata.genre}
+    Age Group: ${metadata.ageGroup || 'General'}
     Synopsis: ${plainSynopsis}
     `
     
@@ -84,6 +93,7 @@ async function regenerateSynopsis() {
     
     const prompt = `BOOK: ${metadata.title}
 GENRE: ${metadata.genre}
+AGE GROUP: ${metadata.ageGroup || 'General'}
 ${metadata.originalPremise ? `ORIGINAL PREMISE: ${metadata.originalPremise}\n` : ''}
 CHAPTERS:
 ${chapterSummaries}
@@ -157,6 +167,17 @@ Generate a compelling synopsis that captures the story arc based on these chapte
               class="bg-transparent focus:outline-none w-full max-w-48 placeholder:text-base-content/30 text-sm font-bold uppercase tracking-wide"
               placeholder="GENRE" 
             />
+          </div>
+          <div class="badge badge-lg gap-2 pl-3 pr-2 py-4 bg-base-200 text-base-content/70 border-none">
+            <Users class="w-4 h-4" />
+            <select
+              v-model="projectStore.bookMetadata.ageGroup"
+              class="bg-transparent focus:outline-none text-sm font-bold tracking-wide border-none"
+            >
+              <option v-for="group in ageGroups" :key="group.value" :value="group.value">
+                {{ group.label }}
+              </option>
+            </select>
           </div>
         </div>
       </div>

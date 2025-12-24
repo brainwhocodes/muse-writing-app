@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS projects (
   title TEXT NOT NULL,
   author TEXT DEFAULT '',
   genre TEXT DEFAULT '',
+  age_group TEXT DEFAULT '',
   logline TEXT DEFAULT '',
   synopsis TEXT DEFAULT '',
   original_premise TEXT DEFAULT '',
@@ -133,7 +134,8 @@ export async function initDb() {
       "ALTER TABLE terminology ADD COLUMN category TEXT DEFAULT 'other'",
       "ALTER TABLE terminology ADD COLUMN aliases TEXT DEFAULT ''",
       "ALTER TABLE projects ADD COLUMN original_premise TEXT DEFAULT ''",
-      "ALTER TABLE projects ADD COLUMN story_bible TEXT DEFAULT '{}'"
+      "ALTER TABLE projects ADD COLUMN story_bible TEXT DEFAULT '{}'",
+      "ALTER TABLE projects ADD COLUMN age_group TEXT DEFAULT ''"
     ]
     for (const sql of migrations) {
       await client.execute(sql).catch(() => {
@@ -156,91 +158,96 @@ function setupHandlers() {
         console.log(`First chapter content length: ${chapters[0].content?.length || 0}`)
       }
 
-      // 1. Save Project
-      await db.insert(schema.projects).values({
-        id: project.id || 'default-project', // Single project for now
-        title: project.title,
-        author: project.author,
-        genre: project.genre,
-        logline: project.logline,
-        synopsis: project.synopsis,
-        originalPremise: project.originalPremise || '',
-        storyBible: JSON.stringify(project.storyBible || {}),
-        updatedAt: new Date()
-      }).onConflictDoUpdate({
-        target: schema.projects.id,
-        set: {
+      const projectId = project.id || 'default-project'
+
+      // Wrap all operations in a transaction for atomicity
+      // If any operation fails, all changes are rolled back
+      await db.transaction(async (tx) => {
+        // 1. Save Project
+        await tx.insert(schema.projects).values({
+          id: projectId,
           title: project.title,
           author: project.author,
           genre: project.genre,
+          ageGroup: project.ageGroup || '',
           logline: project.logline,
           synopsis: project.synopsis,
           originalPremise: project.originalPremise || '',
           storyBible: JSON.stringify(project.storyBible || {}),
           updatedAt: new Date()
+        }).onConflictDoUpdate({
+          target: schema.projects.id,
+          set: {
+            title: project.title,
+            author: project.author,
+            genre: project.genre,
+            ageGroup: project.ageGroup || '',
+            logline: project.logline,
+            synopsis: project.synopsis,
+            originalPremise: project.originalPremise || '',
+            storyBible: JSON.stringify(project.storyBible || {}),
+            updatedAt: new Date()
+          }
+        })
+
+        // 2. Sync Chapters (Delete all for project and re-insert)
+        await tx.delete(schema.chapters).where(eq(schema.chapters.projectId, projectId))
+        
+        if (chapters.length > 0) {
+          await tx.insert(schema.chapters).values(chapters.map((c: any, index: number) => ({
+            id: c.id,
+            projectId: projectId,
+            title: c.title,
+            summary: c.summary,
+            status: c.status,
+            order: index,
+            content: c.content || '',
+            characterIds: JSON.stringify(c.characters || []),
+            beats: JSON.stringify(c.beats || []),
+            placeholder: c.placeholder || '',
+            validatorNotes: c.validatorNotes || '',
+            draftStatus: c.draftStatus || c.status || 'draft',
+            denseSummary: c.denseSummary || '',
+            contextSnapshot: c.contextSnapshot || '',
+            contextTokens: c.contextTokens || 0,
+            lastPromptHash: c.lastPromptHash || ''
+          })))
+        }
+
+        // 3. Sync Characters
+        await tx.delete(schema.characters).where(eq(schema.characters.projectId, projectId))
+        
+        if (characters.length > 0) {
+          await tx.insert(schema.characters).values(characters.map((c: any) => ({
+            id: c.id,
+            projectId: projectId,
+            name: c.name,
+            role: c.role,
+            bio: c.bio,
+            traits: c.traits,
+            isPov: c.isPov ? 1 : 0,
+            voiceDiction: c.voiceDiction || '',
+            voiceForbidden: c.voiceForbidden || '',
+            voiceMetaphors: c.voiceMetaphors || ''
+          })))
+        }
+
+        // 4. Sync Terminology
+        await tx.delete(schema.terminology).where(eq(schema.terminology.projectId, projectId))
+        
+        if (terms && terms.length > 0) {
+          await tx.insert(schema.terminology).values(terms.map((t: any) => ({
+            id: t.id,
+            projectId: projectId,
+            term: t.term,
+            definition: t.definition || '',
+            notes: t.notes || '',
+            chapterIds: JSON.stringify(t.chapters || []),
+            category: t.category || 'other',
+            aliases: t.aliases || ''
+          })))
         }
       })
-
-      const projectId = project.id || 'default-project'
-
-      // 2. Sync Chapters (Delete all for project and re-insert)
-      // In a real app, we might want to be smarter, but this ensures perfect sync
-      await db.delete(schema.chapters).where(eq(schema.chapters.projectId, projectId))
-      
-      if (chapters.length > 0) {
-        await db.insert(schema.chapters).values(chapters.map((c: any, index: number) => ({
-          id: c.id,
-          projectId: projectId,
-          title: c.title,
-          summary: c.summary,
-          status: c.status,
-          order: index,
-          content: c.content || '',
-          characterIds: JSON.stringify(c.characters || []),
-          beats: JSON.stringify(c.beats || []),
-          placeholder: c.placeholder || '',
-          validatorNotes: c.validatorNotes || '',
-          draftStatus: c.draftStatus || c.status || 'draft',
-          denseSummary: c.denseSummary || '',
-          contextSnapshot: c.contextSnapshot || '',
-          contextTokens: c.contextTokens || 0,
-          lastPromptHash: c.lastPromptHash || ''
-        })))
-      }
-
-      // 3. Sync Characters
-      await db.delete(schema.characters).where(eq(schema.characters.projectId, projectId))
-      
-      if (characters.length > 0) {
-        await db.insert(schema.characters).values(characters.map((c: any) => ({
-          id: c.id,
-          projectId: projectId,
-          name: c.name,
-          role: c.role,
-          bio: c.bio,
-          traits: c.traits,
-          isPov: c.isPov ? 1 : 0,
-          voiceDiction: c.voiceDiction || '',
-          voiceForbidden: c.voiceForbidden || '',
-          voiceMetaphors: c.voiceMetaphors || ''
-        })))
-      }
-
-      // 4. Sync Terminology
-      await db.delete(schema.terminology).where(eq(schema.terminology.projectId, projectId))
-      
-      if (terms && terms.length > 0) {
-        await db.insert(schema.terminology).values(terms.map((t: any) => ({
-          id: t.id,
-          projectId: projectId,
-          term: t.term,
-          definition: t.definition || '',
-          notes: t.notes || '',
-          chapterIds: JSON.stringify(t.chapters || []),
-          category: t.category || 'other',
-          aliases: t.aliases || ''
-        })))
-      }
 
       return { success: true }
     } catch (error) {
@@ -282,6 +289,7 @@ function setupHandlers() {
             title: project.title,
             author: project.author,
             genre: project.genre,
+            ageGroup: project.ageGroup || '',
             logline: project.logline,
             synopsis: project.synopsis,
             originalPremise: project.originalPremise || '',
